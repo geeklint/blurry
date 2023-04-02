@@ -42,12 +42,7 @@ fn main() {
         .unwrap();
     use blurry::Edge;
     use std::io::Write;
-    let curve = CubicCurve {
-        start: (0.0, 0.0),
-        control_s: (0.85, 0.46),
-        control_e: (0.01, 1.52),
-        end: (1.0, 1.0),
-    };
+    let curve = CubicCurve::new((0.0, 0.0), (0.85, 0.46), (0.01, 1.52), (1.0, 1.0));
     let argv: Vec<_> = std::env::args().collect();
     let (px, py) = if let [pxarg, pyarg, ..] = &argv[1..] {
         (pxarg.parse().unwrap(), pyarg.parse().unwrap())
@@ -56,11 +51,20 @@ fn main() {
     };
     let t = dbg!(curve.nearest_t((px, py)));
     let (x, y) = dbg!(curve.point(t));
-    let [x, y, px, py] = [x, y, px, py].map(|t| t * 100.0);
+    let (dx, dy) = curve.direction(t);
+    let dmag = (dx.powi(2) + dy.powi(2)).sqrt();
+    let dx = dx / dmag + x;
+    let dy = dy / dmag + y;
+    let [x, y, px, py, dx, dy] = [x, y, px, py, dx, dy].map(|t| t * 100.0);
     write!(svg, "<html><body><svg width=\"1000\" height=\"1000\">").unwrap();
     write!(
         svg,
         "<path d=\"M0,0 C85,46 1,152 100,100\" stroke=\"magenta\" fill=\"transparent\" />"
+    )
+    .unwrap();
+    write!(
+        svg,
+        "<path d=\"M{x},{y} L{dx},{dy}\" stroke=\"cyan\" fill=\"transparent\" />"
     )
     .unwrap();
     write!(svg, "<circle cx=\"{px}\" cy=\"{py}\" r=\"5\" />").unwrap();
