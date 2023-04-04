@@ -1,199 +1,99 @@
-use math::Polynomial;
+mod bisect;
+mod edge;
+mod math;
+mod raster;
 
-pub mod math;
+use std::collections::HashSet;
 
-pub trait Edge {
-    fn point(&self, t: f32) -> (f32, f32);
-    fn nearest_t(&self, point: (f32, f32)) -> f32;
-    fn direction(&self, t: f32) -> (f32, f32);
+use ttf_parser::Face;
+
+pub use crate::{
+    bisect::BisectArgs,
+    edge::{CubicCurve, Edge},
+    raster::RasteredSize,
+};
+
+// settings:
+// - font size / texture size
+// - padding ratio
+// - enable left-clamp
+// take in iter of (id, Face, char)
+//
+// output:
+// - id
+// - xys left, right, top, bottom
+// - uvs left, right, top, bottom
+// - left clamp
+
+#[derive(Clone, Copy, Debug)]
+pub enum AssetSize {
+    FontSize(f32),
+    TextureSize(u32, u32),
 }
 
-struct Line {
-    start: (f32, f32),
-    end: (f32, f32),
+#[derive(Clone, Copy, Debug)]
+pub struct Settings {
+    pub size: AssetSize,
+    pub padding_ratio: f32,
+    pub left_clamp_opt: bool,
 }
 
-impl Edge for Line {
-    fn point(&self, t: f32) -> (f32, f32) {
-        let x = (self.start.0 * (1.0 - t)) + (self.end.0 * t);
-        let y = (self.start.1 * (1.0 - t)) + (self.end.1 * t);
-        (x, y)
+pub fn build<'a, T, I>(settings: Settings, glyphs: I)
+where
+    I: 'a + Clone + Iterator<Item = (T, &'a Face<'a>, char)>,
+{
+}
+
+type PackResult<'a, T> = Vec<crunch::PackedItem<Box<(T, &'a Face<'a>, char, RasteredSize)>>>;
+
+fn find_font_packing<'a, T, I>(
+    asset_width: u32,
+    asset_height: u32,
+    padding_ratio: f32,
+    left_clamp_opt: bool,
+    glyphs: &I,
+) -> PackResult<'a, T>
+where
+    T: Clone,
+    I: 'a + Clone + Iterator<Item = (T, &'a Face<'a>, char)>,
+{
+    let (font_size, pack) = bisect::bisect_font_size(
+        asset_width,
+        asset_height,
+        padding_ratio,
+        BisectArgs {
+            lower_bound: 1.0,
+            too_big: 8.0 * (asset_height as f32),
+            attempts: 11,
+        },
+        glyphs,
+        |_, _| false,
+    );
+    if !left_clamp_opt {
+        return pack;
     }
-
-    fn nearest_t(&self, point: (f32, f32)) -> f32 {
-        let vx = self.end.0 - self.start.0;
-        let vy = self.end.1 - self.start.1;
-        let ux = self.start.0 - point.0;
-        let uy = self.start.1 - point.1;
-        let wx = self.end.0 - point.0;
-        let wy = self.end.1 - point.1;
-        let vu = (vx * ux) + (vy * uy);
-        let vv = (vx * vx) + (vy * vy);
-        let t = -vu / vv;
-        let start = (ux * ux) + (uy * uy);
-        let end = (wx * wx) + (wy * wy);
-        if (0.0..=1.0).contains(&t) {
-            t
-        } else if start < end {
-            0.0
-        } else {
-            1.0
-        }
-    }
-
-    fn direction(&self, t: f32) -> (f32, f32) {
-        (self.end.0 - self.start.0, self.end.1 - self.start.1)
-    }
-}
-
-struct QuadCurve {
-    x_poly: Polynomial<3>,
-    y_poly: Polynomial<3>,
-}
-
-impl QuadCurve {
-    pub fn new(start: (f32, f32), control: (f32, f32), end: (f32, f32)) -> Self {
-        let x_poly = Polynomial {
-            coeffs: [
-                -2.0 * control.0 + start.0 + end.0,
-                2.0 * control.0 - 2.0 * start.0,
-                start.0,
-            ],
-        };
-        let y_poly = Polynomial {
-            coeffs: [
-                -2.0 * control.1 + start.1 + end.1,
-                2.0 * control.1 - 2.0 * start.1,
-                start.1,
-            ],
-        };
-        Self { x_poly, y_poly }
-    }
-}
-
-fn quad_eq(s: f32, c: f32, e: f32, t: f32) -> f32 {
-    let s_factor = (1.0 - t).powi(2) * s;
-    let c_factor = 2.0 * t * (1.0 - t) * c;
-    let e_factor = t.powi(2) * e;
-    s_factor + c_factor + e_factor
-}
-
-impl Edge for QuadCurve {
-    fn point(&self, t: f32) -> (f32, f32) {
-        let x = self.x_poly.value(t);
-        let y = self.y_poly.value(t);
-        (x, y)
-    }
-
-    fn nearest_t(&self, point: (f32, f32)) -> f32 {
-        let x_point = Polynomial {
-            coeffs: [0.0, 0.0, point.0],
-        };
-        let y_point = Polynomial {
-            coeffs: [0.0, 0.0, point.1],
-        };
-        let distance_sq = (self.x_poly - x_point).pow2() + (self.y_poly - y_point).pow2();
-        dbg!(distance_sq);
-        let dd = distance_sq.derivative();
-        let start_dist_sq = distance_sq.value(0.0);
-        let end_dist_sq = distance_sq.value(1.0);
-        let (mut best_dist_sq, mut best_t) = if start_dist_sq < end_dist_sq {
-            (start_dist_sq, 0.0)
-        } else {
-            (end_dist_sq, 1.0)
-        };
-        for test in [0.0, 0.25, 0.5, 0.75, 1.0] {
-            let root = dd.newtons_root(test, 8);
-            if (0.0..=1.0).contains(&root) {
-                let dist_sq = distance_sq.value(root);
-                if dist_sq < best_dist_sq {
-                    best_dist_sq = dist_sq;
-                    best_t = root;
-                }
+    let clampable: HashSet<(*const Face<'a>, char)> = pack
+        .into_iter()
+        .filter_map(|packed_item| {
+            let (_id, face, ch, rastered_size) = *packed_item.data;
+            if raster::can_clamp_left(rastered_size, face, ch) {
+                Some((face as *const Face<'_>, ch))
+            } else {
+                None
             }
-        }
-        best_t
-    }
-
-    fn direction(&self, t: f32) -> (f32, f32) {
-        let x = self.x_poly.derivative().value(t);
-        let y = self.x_poly.derivative().value(t);
-        (x, y)
-    }
-}
-
-pub struct CubicCurve {
-    x_poly: Polynomial<4>,
-    y_poly: Polynomial<4>,
-}
-
-impl CubicCurve {
-    pub fn new(
-        start: (f32, f32),
-        control_s: (f32, f32),
-        control_e: (f32, f32),
-        end: (f32, f32),
-    ) -> Self {
-        let x_poly = Polynomial {
-            coeffs: [
-                -start.0 + 3.0 * control_s.0 - 3.0 * control_e.0 + end.0,
-                3.0 * start.0 - 6.0 * control_s.0 + 3.0 * control_e.0,
-                -3.0 * start.0 + 3.0 * control_s.0,
-                start.0,
-            ],
-        };
-        let y_poly = Polynomial {
-            coeffs: [
-                -start.1 + 3.0 * control_s.1 - 3.0 * control_e.1 + end.1,
-                3.0 * start.1 - 6.0 * control_s.1 + 3.0 * control_e.1,
-                -3.0 * start.1 + 3.0 * control_s.1,
-                start.1,
-            ],
-        };
-        Self { x_poly, y_poly }
-    }
-}
-
-impl Edge for CubicCurve {
-    fn point(&self, t: f32) -> (f32, f32) {
-        let x = self.x_poly.value(t);
-        let y = self.y_poly.value(t);
-        (x, y)
-    }
-
-    fn nearest_t(&self, point: (f32, f32)) -> f32 {
-        let x_point = Polynomial {
-            coeffs: [0.0, 0.0, 0.0, point.0],
-        };
-        let y_point = Polynomial {
-            coeffs: [0.0, 0.0, 0.0, point.1],
-        };
-        let distance_sq = (self.x_poly - x_point).pow2() + (self.y_poly - y_point).pow2();
-        dbg!(distance_sq);
-        let dd = distance_sq.derivative();
-        let start_dist_sq = distance_sq.value(0.0);
-        let end_dist_sq = distance_sq.value(1.0);
-        let (mut best_dist_sq, mut best_t) = if start_dist_sq < end_dist_sq {
-            (start_dist_sq, 0.0)
-        } else {
-            (end_dist_sq, 1.0)
-        };
-        for test in [0.0, 0.25, 0.5, 0.75, 1.0] {
-            let root = dd.newtons_root(test, 8);
-            if (0.0..=1.0).contains(&root) {
-                let dist_sq = distance_sq.value(root);
-                if dist_sq < best_dist_sq {
-                    best_dist_sq = dist_sq;
-                    best_t = root;
-                }
-            }
-        }
-        best_t
-    }
-
-    fn direction(&self, t: f32) -> (f32, f32) {
-        let x = self.x_poly.derivative().value(t);
-        let y = self.y_poly.derivative().value(t);
-        (x, y)
-    }
+        })
+        .collect();
+    bisect::bisect_font_size(
+        asset_width,
+        asset_height,
+        padding_ratio,
+        BisectArgs {
+            lower_bound: font_size,
+            too_big: 2.0 * font_size,
+            attempts: 7,
+        },
+        glyphs,
+        |face, ch| clampable.contains(&(face as *const Face<'_>, ch)),
+    )
+    .1
 }

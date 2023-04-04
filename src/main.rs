@@ -52,6 +52,8 @@ fn main() {
     let t = dbg!(curve.nearest_t((px, py)));
     let (x, y) = dbg!(curve.point(t));
     let (dx, dy) = curve.direction(t);
+    let curve_side = (dx * (py - y) - dy * (px - x)).signum();
+    dbg!(curve_side);
     let dmag = (dx.powi(2) + dy.powi(2)).sqrt();
     let dx = dx / dmag + x;
     let dy = dy / dmag + y;
