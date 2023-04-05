@@ -1,5 +1,7 @@
 use ttf_parser::Face;
 
+use crate::edge::{CubicCurve, Line, QuadCurve};
+
 /// the largest f32 which is less than u32::MAX
 ///
 /// u32::MAX rounds up when converted to float, so do this manually
@@ -82,6 +84,71 @@ pub fn get_rastered_size(
     }
 }
 
-pub fn can_clamp_left(unclamped: RasteredSize, face: &Face<'_>, ch: char) -> bool {
-    todo!()
+pub fn can_clamp_left(unclamped: RasteredSize, padding: f32, face: &Face<'_>, ch: char) -> bool {
+    let samples = unclamped.pixel_height;
+    let height = unclamped.top - unclamped.bottom;
+    let glyph_id = face.glyph_index(ch).unwrap();
+    let mut segments = Segments::default();
+    face.outline_glyph(glyph_id, &mut segments);
+    let vertical_pixel = (unclamped.top - unclamped.bottom) / (unclamped.pixel_height as f32);
+    let error_slope = vertical_pixel / padding;
+    let x = unclamped.left;
+    for sample in 0..samples {
+        let y_percent = ((sample as f32) + 0.5) / (samples as f32);
+        let y = unclamped.bottom + (y_percent * height);
+        let mut nearest_dist2 = f32::INFINITY;
+        let mut nearest_point = (x, y);
+        for segment in &segments.segments {
+            let t = segment.nearest_t((unclamped.left, y));
+            let (px, py) = segment.point(t);
+            let dist2 = (px - x).powi(2) + (py - y).powi(2);
+            if dist2 < nearest_dist2 {
+                nearest_dist2 = dist2;
+                nearest_point = (px, py);
+            }
+        }
+        let slope = (nearest_point.1 - y).abs() / (nearest_point.0 - x).abs();
+        if slope > error_slope {
+            return false;
+        }
+    }
+    true
+}
+
+#[derive(Default)]
+pub struct Segments {
+    segments: Vec<crate::edge::Segment>,
+    cursor_x: f32,
+    cursor_y: f32,
+}
+
+impl ttf_parser::OutlineBuilder for Segments {
+    fn move_to(&mut self, x: f32, y: f32) {
+        self.cursor_x = x;
+        self.cursor_y = y;
+    }
+
+    fn line_to(&mut self, x: f32, y: f32) {
+        self.segments
+            .push(Line::new((self.cursor_x, self.cursor_y), (x, y)).into());
+        self.cursor_x = x;
+        self.cursor_y = y;
+    }
+
+    fn quad_to(&mut self, x1: f32, y1: f32, x: f32, y: f32) {
+        self.segments
+            .push(QuadCurve::new((self.cursor_x, self.cursor_y), (x1, y1), (x, y)).into());
+        self.cursor_x = x;
+        self.cursor_y = y;
+    }
+
+    fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x: f32, y: f32) {
+        self.segments.push(
+            CubicCurve::new((self.cursor_x, self.cursor_y), (x1, y1), (x2, y2), (x, y)).into(),
+        );
+        self.cursor_x = x;
+        self.cursor_y = y;
+    }
+
+    fn close(&mut self) {}
 }

@@ -42,6 +42,7 @@ pub fn build<'a, T, I>(settings: Settings, glyphs: I)
 where
     I: 'a + Clone + Iterator<Item = (T, &'a Face<'a>, char)>,
 {
+    todo!()
 }
 
 type PackResult<'a, T> = Vec<crunch::PackedItem<Box<(T, &'a Face<'a>, char, RasteredSize)>>>;
@@ -76,7 +77,7 @@ where
         .into_iter()
         .filter_map(|packed_item| {
             let (_id, face, ch, rastered_size) = *packed_item.data;
-            if raster::can_clamp_left(rastered_size, face, ch) {
+            if raster::can_clamp_left(rastered_size, padding_ratio, face, ch) {
                 Some((face as *const Face<'_>, ch))
             } else {
                 None

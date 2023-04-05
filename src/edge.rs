@@ -1,14 +1,70 @@
 use crate::math::Polynomial;
 
+pub enum Segment {
+    Line(Line),
+    Quad(QuadCurve),
+    Cubic(CubicCurve),
+}
+
+impl Segment {
+    pub fn point(&self, t: f32) -> (f32, f32) {
+        match self {
+            Self::Line(line) => line.point(t),
+            Self::Quad(quad) => quad.point(t),
+            Self::Cubic(curve) => curve.point(t),
+        }
+    }
+
+    pub fn nearest_t(&self, point: (f32, f32)) -> f32 {
+        match self {
+            Self::Line(line) => line.nearest_t(point),
+            Self::Quad(quad) => quad.nearest_t(point),
+            Self::Cubic(curve) => curve.nearest_t(point),
+        }
+    }
+
+    pub fn direction(&self, t: f32) -> (f32, f32) {
+        match self {
+            Self::Line(line) => line.direction(t),
+            Self::Quad(quad) => quad.direction(t),
+            Self::Cubic(curve) => curve.direction(t),
+        }
+    }
+}
+
+impl From<Line> for Segment {
+    fn from(v: Line) -> Self {
+        Self::Line(v)
+    }
+}
+
+impl From<QuadCurve> for Segment {
+    fn from(v: QuadCurve) -> Self {
+        Self::Quad(v)
+    }
+}
+
+impl From<CubicCurve> for Segment {
+    fn from(v: CubicCurve) -> Self {
+        Self::Cubic(v)
+    }
+}
+
 pub trait Edge {
     fn point(&self, t: f32) -> (f32, f32);
     fn nearest_t(&self, point: (f32, f32)) -> f32;
     fn direction(&self, t: f32) -> (f32, f32);
 }
 
-struct Line {
+pub struct Line {
     start: (f32, f32),
     end: (f32, f32),
+}
+
+impl Line {
+    pub fn new(start: (f32, f32), end: (f32, f32)) -> Self {
+        Self { start, end }
+    }
 }
 
 impl Edge for Line {
@@ -44,7 +100,7 @@ impl Edge for Line {
     }
 }
 
-struct QuadCurve {
+pub struct QuadCurve {
     x_poly: Polynomial<3>,
     y_poly: Polynomial<3>,
 }
@@ -67,13 +123,6 @@ impl QuadCurve {
         };
         Self { x_poly, y_poly }
     }
-}
-
-fn quad_eq(s: f32, c: f32, e: f32, t: f32) -> f32 {
-    let s_factor = (1.0 - t).powi(2) * s;
-    let c_factor = 2.0 * t * (1.0 - t) * c;
-    let e_factor = t.powi(2) * e;
-    s_factor + c_factor + e_factor
 }
 
 impl Edge for QuadCurve {
