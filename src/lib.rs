@@ -68,7 +68,7 @@ where
             );
         }
     }
-    let buflen = usize::from(width) * (2 * usize::from(height));
+    let buflen = usize::from(width) * usize::from(height);
     let mut buf = vec![0; buflen];
     for item in packing {
         dbg!(item.data.2);

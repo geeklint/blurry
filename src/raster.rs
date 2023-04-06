@@ -84,13 +84,18 @@ pub fn can_clamp_left(unclamped: RasteredSize, padding: f32, face: &Face<'_>, ch
     let height = unclamped.top - unclamped.bottom;
     let glyph_id = face.glyph_index(ch).unwrap();
     let mut segments = Segments::new(f32::from(face.height()));
-    face.outline_glyph(glyph_id, &mut segments);
+    let Some(bbox) = face.outline_glyph(glyph_id, &mut segments) else {return false};
+    let bottom = f32::from(bbox.y_min) / f32::from(face.height());
+    let top = f32::from(bbox.y_max) / f32::from(face.height());
     let vertical_pixel = (unclamped.top - unclamped.bottom) / (unclamped.pixel_height as f32);
     let error_slope = vertical_pixel / padding;
     let x = unclamped.left;
     for sample in 0..samples {
         let y_percent = ((sample as f32) + 0.5) / (samples as f32);
         let y = unclamped.bottom + (y_percent * height);
+        if y < bottom || y > top {
+            continue;
+        }
         let mut nearest_dist2 = f32::INFINITY;
         let mut nearest_point = (x, y);
         for segment in &segments.segments {
@@ -193,10 +198,10 @@ pub fn raster<T>(
     let glyph_id = face.glyph_index(ch).unwrap();
     let mut segments = Segments::new(f32::from(face.height()));
     face.outline_glyph(glyph_id, &mut segments);
-    for dest_y in 0..(item.rect.w - 1) {
+    for dest_y in 0..(item.rect.h - 1) {
         let y = (dest_y as f32 + 0.5) / ((item.rect.h - 1) as f32);
         let dest_y = dest_y + item.rect.y;
-        for dest_x in 0..(item.rect.h - 1) {
+        for dest_x in 0..(item.rect.w - 1) {
             let x = (dest_x as f32 + 0.5) / ((item.rect.w - 1) as f32);
             let dest_x = dest_x + item.rect.x;
             let (x, y) = if rotate { (y, x) } else { (x, y) };
@@ -205,22 +210,45 @@ pub fn raster<T>(
             let y = rastered_size.bottom + (y * (rastered_size.top - rastered_size.bottom));
             let mut nearest = None;
             let mut nearest_dist2 = f32::INFINITY;
-            for segment in &segments.segments {
+            for (i, segment) in segments.segments.iter().enumerate() {
                 let t = segment.nearest_t((x, y));
                 let (px, py) = segment.point(t);
                 let dist2 = (px - x).powi(2) + (py - y).powi(2);
                 if dist2 < nearest_dist2 {
                     nearest_dist2 = dist2;
-                    nearest = Some((segment, t));
+                    nearest = Some((i, t));
                 }
             }
-            if let Some((segment, t)) = nearest {
-                let (cx, cy) = segment.point(t);
-                let (dx, dy) = segment.direction(t);
+            if let Some((i, t)) = nearest {
+                let (cx, cy) = segments.segments[i].point(t);
+                let (dx, dy) = segments.segments[i].direction(t);
+                /*
+                let (dx, dy) = if t == 0.0 {
+                    let other_seg = if i == 0 {
+                        segments.segments.len() - 1
+                    } else {
+                        i - 1
+                    };
+                    let (odx, ody) = segments.segments[other_seg].direction(1.0);
+                    let dlen = (dx.powi(2) + dy.powi(2)).sqrt();
+                    let odlen = (odx.powi(2) + ody.powi(2)).sqrt();
+                    let between = ((dx / dlen + odx / odlen), (dy / dlen + ody / odlen));
+                    (-between.1, between.0)
+                } else if t == 1.0 {
+                    let other_seg = (i + 1) % segments.segments.len();
+                    let (odx, ody) = segments.segments[other_seg].direction(0.0);
+                    let dlen = (dx.powi(2) + dy.powi(2)).sqrt();
+                    let odlen = (odx.powi(2) + ody.powi(2)).sqrt();
+                    let between = ((dx / dlen + odx / odlen), (dy / dlen + ody / odlen));
+                    (-between.1, between.0)
+                } else {
+                    (dx, dy)
+                };
+                */
                 let curve_side = (dx * (y - cy) - dy * (x - cx)).signum();
                 //let inside = curve_side < 0.0;
                 let dist = nearest_dist2.sqrt() / padding;
-                let signed_dist = 0.5 - (curve_side * (dist * 0.5));
+                let signed_dist = 0.5 - (dist * 0.5);
                 let value = (f32::from(u8::MAX) * signed_dist.clamp(0.0, 1.0)) as u8;
                 buffer.set_pixel((dest_x, dest_y), value)
             }

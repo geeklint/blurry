@@ -36,8 +36,9 @@ fn main() {
             padding_ratio: 0.2,
             left_clamp_opt: true,
         },
-        //"abcdefghijklmnopqrstuvwxyz"
-        "xe".chars().map(|ch| ((), &face, ch)),
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+            .chars()
+            .map(|ch| ((), &face, ch)),
     );
     /*
     dbg!(face.height());
