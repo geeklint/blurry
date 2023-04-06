@@ -36,7 +36,7 @@ fn main() {
             padding_ratio: 0.2,
             left_clamp_opt: true,
         },
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
             .chars()
             .map(|ch| ((), &face, ch)),
     );

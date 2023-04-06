@@ -163,7 +163,7 @@ impl Edge for QuadCurve {
 
     fn direction(&self, t: f32) -> (f32, f32) {
         let x = self.x_poly.derivative().value(t);
-        let y = self.x_poly.derivative().value(t);
+        let y = self.y_poly.derivative().value(t);
         (x, y)
     }
 }

@@ -222,7 +222,6 @@ pub fn raster<T>(
             if let Some((i, t)) = nearest {
                 let (cx, cy) = segments.segments[i].point(t);
                 let (dx, dy) = segments.segments[i].direction(t);
-                /*
                 let (dx, dy) = if t == 0.0 {
                     let other_seg = if i == 0 {
                         segments.segments.len() - 1
@@ -232,23 +231,20 @@ pub fn raster<T>(
                     let (odx, ody) = segments.segments[other_seg].direction(1.0);
                     let dlen = (dx.powi(2) + dy.powi(2)).sqrt();
                     let odlen = (odx.powi(2) + ody.powi(2)).sqrt();
-                    let between = ((dx / dlen + odx / odlen), (dy / dlen + ody / odlen));
-                    (-between.1, between.0)
+                    ((dx / dlen + odx / odlen), (dy / dlen + ody / odlen))
                 } else if t == 1.0 {
                     let other_seg = (i + 1) % segments.segments.len();
                     let (odx, ody) = segments.segments[other_seg].direction(0.0);
                     let dlen = (dx.powi(2) + dy.powi(2)).sqrt();
                     let odlen = (odx.powi(2) + ody.powi(2)).sqrt();
-                    let between = ((dx / dlen + odx / odlen), (dy / dlen + ody / odlen));
-                    (-between.1, between.0)
+                    ((dx / dlen + odx / odlen), (dy / dlen + ody / odlen))
                 } else {
                     (dx, dy)
                 };
-                */
                 let curve_side = (dx * (y - cy) - dy * (x - cx)).signum();
                 //let inside = curve_side < 0.0;
                 let dist = nearest_dist2.sqrt() / padding;
-                let signed_dist = 0.5 - (dist * 0.5);
+                let signed_dist = 0.5 - curve_side * (dist * 0.5);
                 let value = (f32::from(u8::MAX) * signed_dist.clamp(0.0, 1.0)) as u8;
                 buffer.set_pixel((dest_x, dest_y), value)
             }
