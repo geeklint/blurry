@@ -30,6 +30,16 @@ static DATA: &[u8] = include_bytes!("/usr/share/fonts/noto/NotoSans-Regular.ttf"
 
 fn main() {
     let face = ttf_parser::Face::parse(DATA, 0).unwrap();
+    blurry::build(
+        blurry::Settings {
+            size: blurry::AssetSize::TextureSize(255, 255),
+            padding_ratio: 0.2,
+            left_clamp_opt: true,
+        },
+        //"abcdefghijklmnopqrstuvwxyz"
+        "xe".chars().map(|ch| ((), &face, ch)),
+    );
+    /*
     dbg!(face.height());
     let glyph_id = face.glyph_index('A').unwrap();
     face.outline_glyph(glyph_id, &mut PrintsOutline {});
@@ -76,4 +86,5 @@ fn main() {
     )
     .unwrap();
     write!(svg, "</svg></body></html>").unwrap();
+    */
 }

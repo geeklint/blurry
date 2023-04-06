@@ -28,7 +28,7 @@ pub use crate::{
 #[derive(Clone, Copy, Debug)]
 pub enum AssetSize {
     FontSize(f32),
-    TextureSize(u32, u32),
+    TextureSize(u16, u16),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -40,16 +40,55 @@ pub struct Settings {
 
 pub fn build<'a, T, I>(settings: Settings, glyphs: I)
 where
+    T: Clone,
     I: 'a + Clone + Iterator<Item = (T, &'a Face<'a>, char)>,
 {
-    todo!()
+    let (width, height, packing);
+    match settings.size {
+        AssetSize::FontSize(font_size) => {
+            let (dim, packresult) = find_font_packing_by_font_size(
+                font_size,
+                settings.padding_ratio,
+                settings.left_clamp_opt,
+                &glyphs,
+            );
+            width = dim;
+            height = dim;
+            packing = packresult;
+        }
+        AssetSize::TextureSize(w, h) => {
+            width = w;
+            height = h;
+            packing = find_font_packing_by_asset_size(
+                width,
+                height,
+                settings.padding_ratio,
+                settings.left_clamp_opt,
+                &glyphs,
+            );
+        }
+    }
+    let buflen = usize::from(width) * (2 * usize::from(height));
+    let mut buf = vec![0; buflen];
+    for item in packing {
+        dbg!(item.data.2);
+        raster::raster(
+            raster::Buffer {
+                data: &mut buf,
+                width,
+            },
+            settings.padding_ratio,
+            item,
+        )
+    }
+    std::fs::write("test.data", &buf).unwrap();
 }
 
 type PackResult<'a, T> = Vec<crunch::PackedItem<Box<(T, &'a Face<'a>, char, RasteredSize)>>>;
 
-fn find_font_packing<'a, T, I>(
-    asset_width: u32,
-    asset_height: u32,
+fn find_font_packing_by_asset_size<'a, T, I>(
+    asset_width: u16,
+    asset_height: u16,
     padding_ratio: f32,
     left_clamp_opt: bool,
     glyphs: &I,
@@ -77,11 +116,8 @@ where
         .into_iter()
         .filter_map(|packed_item| {
             let (_id, face, ch, rastered_size) = *packed_item.data;
-            if raster::can_clamp_left(rastered_size, padding_ratio, face, ch) {
-                Some((face as *const Face<'_>, ch))
-            } else {
-                None
-            }
+            raster::can_clamp_left(rastered_size, padding_ratio, face, ch)
+                .then_some((face as *const Face<'_>, ch))
         })
         .collect();
     bisect::bisect_font_size(
@@ -97,4 +133,32 @@ where
         |face, ch| clampable.contains(&(face as *const Face<'_>, ch)),
     )
     .1
+}
+
+fn find_font_packing_by_font_size<'a, T, I>(
+    font_size: f32,
+    padding_ratio: f32,
+    left_clamp_opt: bool,
+    glyphs: &I,
+) -> (u16, PackResult<'a, T>)
+where
+    T: Clone,
+    I: 'a + Clone + Iterator<Item = (T, &'a Face<'a>, char)>,
+{
+    let clampable: HashSet<(*const Face<'a>, char)> = if left_clamp_opt {
+        glyphs
+            .clone()
+            .filter_map(|(_id, face, ch)| {
+                let rasterized_size =
+                    raster::get_rastered_size(padding_ratio, false, font_size, face, ch);
+                raster::can_clamp_left(rasterized_size, padding_ratio, face, ch)
+                    .then_some((face as *const Face<'_>, ch))
+            })
+            .collect()
+    } else {
+        HashSet::new()
+    };
+    bisect::bisect_asset_size(font_size, padding_ratio, glyphs, |face, ch| {
+        clampable.contains(&(face as *const Face<'_>, ch))
+    })
 }

@@ -9,8 +9,8 @@ pub struct BisectArgs<T> {
 }
 
 pub fn bisect_font_size<'a, T, I, F>(
-    asset_width: u32,
-    asset_height: u32,
+    asset_width: u16,
+    asset_height: u16,
     padding_ratio: f32,
     args: BisectArgs<f32>,
     glyphs: &I,

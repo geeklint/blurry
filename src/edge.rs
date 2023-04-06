@@ -95,7 +95,7 @@ impl Edge for Line {
         }
     }
 
-    fn direction(&self, t: f32) -> (f32, f32) {
+    fn direction(&self, _t: f32) -> (f32, f32) {
         (self.end.0 - self.start.0, self.end.1 - self.start.1)
     }
 }
@@ -140,7 +140,6 @@ impl Edge for QuadCurve {
             coeffs: [0.0, 0.0, point.1],
         };
         let distance_sq = (self.x_poly - x_point).pow2() + (self.y_poly - y_point).pow2();
-        dbg!(distance_sq);
         let dd = distance_sq.derivative();
         let start_dist_sq = distance_sq.value(0.0);
         let end_dist_sq = distance_sq.value(1.0);
@@ -216,7 +215,6 @@ impl Edge for CubicCurve {
             coeffs: [0.0, 0.0, 0.0, point.1],
         };
         let distance_sq = (self.x_poly - x_point).pow2() + (self.y_poly - y_point).pow2();
-        dbg!(distance_sq);
         let dd = distance_sq.derivative();
         let start_dist_sq = distance_sq.value(0.0);
         let end_dist_sq = distance_sq.value(1.0);

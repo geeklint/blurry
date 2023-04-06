@@ -2,17 +2,12 @@ use ttf_parser::Face;
 
 use crate::edge::{CubicCurve, Line, QuadCurve};
 
-/// the largest f32 which is less than u32::MAX
-///
-/// u32::MAX rounds up when converted to float, so do this manually
-const MAX_F32_IN_U32: f32 = 4294967040.0;
-
 #[derive(Clone, Copy, Debug)]
 pub struct RasteredSize {
     /// The width of the destination buffer
-    pub pixel_width: u32,
+    pub pixel_width: u16,
     /// The height of the destination buffer
-    pub pixel_height: u32,
+    pub pixel_height: u16,
 
     /// The left edge of the bounding box in percentage of font height
     pub left: f32,
@@ -51,8 +46,8 @@ pub fn get_rastered_size(
     let height = rel_from(bbox.height()) + (2.0 * padding);
     let pixel_width_f = (edgeless_width * font_size)
         .round()
-        .clamp(0.0, MAX_F32_IN_U32);
-    let pixel_height = (height * font_size).round().clamp(0.0, MAX_F32_IN_U32) as u32;
+        .clamp(0.0, u16::MAX.into());
+    let pixel_height = (height * font_size).round().clamp(0.0, u16::MAX.into()) as u16;
     let left = rel_from(bbox.x_min) - padding;
     let right = rel_from(bbox.x_max) + padding;
     let top = rel_from(bbox.y_max) + padding;
@@ -64,11 +59,11 @@ pub fn get_rastered_size(
         // distored vs `1.0 / font_size`; this is correct since we
         // can produce distorted glyphs which are undistorted by rendering.
         let one_pixel = edgeless_width / pixel_width_f;
-        pixel_width = (pixel_width_f as u32) + 1;
+        pixel_width = (pixel_width_f as u16) + 1;
         left_clamped = rel_from(bbox.x_min);
         left_clamped_internal_raster = left_clamped - one_pixel;
     } else {
-        pixel_width = pixel_width_f as u32;
+        pixel_width = pixel_width_f as u16;
         left_clamped = left;
         left_clamped_internal_raster = left;
     }
@@ -88,7 +83,7 @@ pub fn can_clamp_left(unclamped: RasteredSize, padding: f32, face: &Face<'_>, ch
     let samples = unclamped.pixel_height;
     let height = unclamped.top - unclamped.bottom;
     let glyph_id = face.glyph_index(ch).unwrap();
-    let mut segments = Segments::default();
+    let mut segments = Segments::new(f32::from(face.height()));
     face.outline_glyph(glyph_id, &mut segments);
     let vertical_pixel = (unclamped.top - unclamped.bottom) / (unclamped.pixel_height as f32);
     let error_slope = vertical_pixel / padding;
@@ -115,20 +110,33 @@ pub fn can_clamp_left(unclamped: RasteredSize, padding: f32, face: &Face<'_>, ch
     true
 }
 
-#[derive(Default)]
 pub struct Segments {
+    face_height: f32,
     segments: Vec<crate::edge::Segment>,
     cursor_x: f32,
     cursor_y: f32,
 }
 
+impl Segments {
+    fn new(face_height: f32) -> Self {
+        Self {
+            face_height,
+            segments: Vec::new(),
+            cursor_x: 0.0,
+            cursor_y: 0.0,
+        }
+    }
+}
+
 impl ttf_parser::OutlineBuilder for Segments {
     fn move_to(&mut self, x: f32, y: f32) {
-        self.cursor_x = x;
-        self.cursor_y = y;
+        self.cursor_x = x / self.face_height;
+        self.cursor_y = y / self.face_height;
     }
 
     fn line_to(&mut self, x: f32, y: f32) {
+        let x = x / self.face_height;
+        let y = y / self.face_height;
         self.segments
             .push(Line::new((self.cursor_x, self.cursor_y), (x, y)).into());
         self.cursor_x = x;
@@ -136,6 +144,10 @@ impl ttf_parser::OutlineBuilder for Segments {
     }
 
     fn quad_to(&mut self, x1: f32, y1: f32, x: f32, y: f32) {
+        let x1 = x1 / self.face_height;
+        let y1 = y1 / self.face_height;
+        let x = x / self.face_height;
+        let y = y / self.face_height;
         self.segments
             .push(QuadCurve::new((self.cursor_x, self.cursor_y), (x1, y1), (x, y)).into());
         self.cursor_x = x;
@@ -143,6 +155,12 @@ impl ttf_parser::OutlineBuilder for Segments {
     }
 
     fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x: f32, y: f32) {
+        let x1 = x1 / self.face_height;
+        let y1 = y1 / self.face_height;
+        let x2 = x2 / self.face_height;
+        let y2 = y2 / self.face_height;
+        let x = x / self.face_height;
+        let y = y / self.face_height;
         self.segments.push(
             CubicCurve::new((self.cursor_x, self.cursor_y), (x1, y1), (x2, y2), (x, y)).into(),
         );
@@ -151,4 +169,61 @@ impl ttf_parser::OutlineBuilder for Segments {
     }
 
     fn close(&mut self) {}
+}
+
+pub struct Buffer<'a> {
+    pub data: &'a mut [u8],
+    pub width: u16,
+}
+
+impl<'a> Buffer<'a> {
+    fn set_pixel(&mut self, (x, y): (usize, usize), value: u8) {
+        let width = usize::from(self.width);
+        self.data[y * width + x] = value;
+    }
+}
+
+pub fn raster<T>(
+    mut buffer: Buffer<'_>,
+    padding: f32,
+    item: crunch::PackedItem<Box<(T, &Face<'_>, char, RasteredSize)>>,
+) {
+    let (_id, face, ch, rastered_size) = *item.data;
+    let rotate = (item.rect.w - 1) != rastered_size.pixel_width.into();
+    let glyph_id = face.glyph_index(ch).unwrap();
+    let mut segments = Segments::new(f32::from(face.height()));
+    face.outline_glyph(glyph_id, &mut segments);
+    for dest_y in 0..(item.rect.w - 1) {
+        let y = (dest_y as f32 + 0.5) / ((item.rect.h - 1) as f32);
+        let dest_y = dest_y + item.rect.y;
+        for dest_x in 0..(item.rect.h - 1) {
+            let x = (dest_x as f32 + 0.5) / ((item.rect.w - 1) as f32);
+            let dest_x = dest_x + item.rect.x;
+            let (x, y) = if rotate { (y, x) } else { (x, y) };
+            let x = rastered_size.left_clamped_internal_raster
+                + (x * (rastered_size.right - rastered_size.left_clamped_internal_raster));
+            let y = rastered_size.bottom + (y * (rastered_size.top - rastered_size.bottom));
+            let mut nearest = None;
+            let mut nearest_dist2 = f32::INFINITY;
+            for segment in &segments.segments {
+                let t = segment.nearest_t((x, y));
+                let (px, py) = segment.point(t);
+                let dist2 = (px - x).powi(2) + (py - y).powi(2);
+                if dist2 < nearest_dist2 {
+                    nearest_dist2 = dist2;
+                    nearest = Some((segment, t));
+                }
+            }
+            if let Some((segment, t)) = nearest {
+                let (cx, cy) = segment.point(t);
+                let (dx, dy) = segment.direction(t);
+                let curve_side = (dx * (y - cy) - dy * (x - cx)).signum();
+                //let inside = curve_side < 0.0;
+                let dist = nearest_dist2.sqrt() / padding;
+                let signed_dist = 0.5 - (curve_side * (dist * 0.5));
+                let value = (f32::from(u8::MAX) * signed_dist.clamp(0.0, 1.0)) as u8;
+                buffer.set_pixel((dest_x, dest_y), value)
+            }
+        }
+    }
 }
