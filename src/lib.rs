@@ -3,7 +3,7 @@ mod edge;
 mod math;
 mod raster;
 
-use std::collections::HashSet;
+use std::{collections::HashSet, io::Write};
 
 use ttf_parser::Face;
 
@@ -38,7 +38,7 @@ pub struct Settings {
     pub left_clamp_opt: bool,
 }
 
-pub fn build<'a, T, I>(settings: Settings, glyphs: I)
+pub fn build<'a, T, I>(settings: Settings, glyphs: I) -> Vec<u8>
 where
     T: Clone,
     I: 'a + Clone + Iterator<Item = (T, &'a Face<'a>, char)>,
@@ -71,7 +71,7 @@ where
     let buflen = usize::from(width) * usize::from(height);
     let mut buf = vec![0; buflen];
     for item in packing {
-        dbg!(item.data.2);
+        eprint!("{}", item.data.2);
         raster::raster(
             raster::Buffer {
                 data: &mut buf,
@@ -79,9 +79,11 @@ where
             },
             settings.padding_ratio,
             item,
-        )
+        );
+        let _ = std::io::stderr().flush();
     }
-    std::fs::write("test.data", &buf).unwrap();
+    eprintln!();
+    buf
 }
 
 type PackResult<'a, T> = Vec<crunch::PackedItem<Box<(T, &'a Face<'a>, char, RasteredSize)>>>;
