@@ -214,30 +214,39 @@ pub fn raster<T>(
             let y = rastered_size.bottom + (y * (rastered_size.top - rastered_size.bottom));
             let mut nearest = None;
             let mut nearest_dist2 = f32::INFINITY;
-            let mut nearest_segment_dist2 = f32::INFINITY;
-            for (_segment, seg_bbox) in segments.segments.iter() {
-                let bbox_mid_x = (seg_bbox.left + seg_bbox.right) / 2.0;
-                let bbox_mid_y = (seg_bbox.bottom + seg_bbox.top) / 2.0;
-                let bbox_far_x = if x < bbox_mid_x {
-                    seg_bbox.right
+            // first pass, skip anything that requires newton's method
+            for (i, (segment, _seg_bbox)) in segments.segments.iter().enumerate() {
+                if matches!(segment, Segment::Line(_)) {
+                    // we can do nearest_t for lines
+                    let t = segment.nearest_t((x, y));
+                    let (px, py) = segment.point(t);
+                    let dist2 = (px - x).powi(2) + (py - y).powi(2);
+                    if dist2 < nearest_dist2 {
+                        nearest_dist2 = dist2;
+                        nearest = Some((i, t, px, py));
+                    }
                 } else {
-                    seg_bbox.left
-                };
-                let bbox_far_y = if y < bbox_mid_y {
-                    seg_bbox.top
-                } else {
-                    seg_bbox.bottom
-                };
-                let bbox_far_dist2 = (bbox_far_x - x).powi(2) + (bbox_far_y - y).powi(2);
-                if bbox_far_dist2 < nearest_segment_dist2 {
-                    nearest_segment_dist2 = bbox_far_dist2;
+                    // just check the end points for curves
+                    let (px, py) = segment.point(0.0);
+                    let dist2 = (px - x).powi(2) + (py - y).powi(2);
+                    if dist2 < nearest_dist2 {
+                        nearest_dist2 = dist2;
+                        nearest = Some((i, 0.0, px, py));
+                    }
+                    let (px, py) = segment.point(1.0);
+                    let dist2 = (px - x).powi(2) + (py - y).powi(2);
+                    if dist2 < nearest_dist2 {
+                        nearest_dist2 = dist2;
+                        nearest = Some((i, 1.0, px, py));
+                    }
                 }
             }
+            // second pass, skip anything farther than what the first pass found
             for (i, (segment, seg_bbox)) in segments.segments.iter().enumerate() {
                 let bbox_near_x = x.clamp(seg_bbox.left, seg_bbox.right);
                 let bbox_near_y = y.clamp(seg_bbox.bottom, seg_bbox.top);
                 let bbox_dist2 = (bbox_near_x - x).powi(2) + (bbox_near_y - y).powi(2);
-                if bbox_dist2 > nearest_dist2 || bbox_dist2 > nearest_segment_dist2 {
+                if bbox_dist2 > nearest_dist2 {
                     continue;
                 }
                 let t = segment.nearest_t((x, y));
