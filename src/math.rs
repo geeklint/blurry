@@ -5,14 +5,13 @@ pub struct Polynomial<const N: usize> {
 
 impl<const N: usize> Polynomial<N> {
     pub fn value(&self, t: f32) -> f32 {
-        let mut exp = N.try_into().unwrap();
-        self.coeffs
-            .into_iter()
-            .map(|coeff| {
-                exp -= 1;
-                coeff * t.powi(exp)
-            })
-            .sum()
+        let mut accum = self.coeffs[0];
+        let mut i = 1;
+        while i < N {
+            accum = accum.mul_add(t, self.coeffs[i]);
+            i += 1;
+        }
+        accum
     }
 }
 
