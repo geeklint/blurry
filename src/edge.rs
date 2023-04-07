@@ -30,6 +30,14 @@ impl Segment {
             Self::Cubic(curve) => curve.direction(t),
         }
     }
+
+    pub fn bbox(&self) -> EdgeBoundingBox {
+        match self {
+            Self::Line(line) => line.bbox(),
+            Self::Quad(quad) => quad.bbox(),
+            Self::Cubic(curve) => curve.bbox(),
+        }
+    }
 }
 
 impl From<Line> for Segment {
@@ -50,10 +58,18 @@ impl From<CubicCurve> for Segment {
     }
 }
 
+pub struct EdgeBoundingBox {
+    pub left: f32,
+    pub right: f32,
+    pub top: f32,
+    pub bottom: f32,
+}
+
 pub trait Edge {
     fn point(&self, t: f32) -> (f32, f32);
     fn nearest_t(&self, point: (f32, f32)) -> f32;
     fn direction(&self, t: f32) -> (f32, f32);
+    fn bbox(&self) -> EdgeBoundingBox;
 }
 
 pub struct Line {
@@ -97,6 +113,15 @@ impl Edge for Line {
 
     fn direction(&self, _t: f32) -> (f32, f32) {
         (self.end.0 - self.start.0, self.end.1 - self.start.1)
+    }
+
+    fn bbox(&self) -> EdgeBoundingBox {
+        EdgeBoundingBox {
+            left: self.start.0.min(self.end.0),
+            right: self.start.0.max(self.end.0),
+            top: self.start.1.max(self.end.1),
+            bottom: self.start.1.min(self.end.1),
+        }
     }
 }
 
@@ -165,6 +190,23 @@ impl Edge for QuadCurve {
         let x = self.x_poly.derivative().value(t);
         let y = self.y_poly.derivative().value(t);
         (x, y)
+    }
+
+    fn bbox(&self) -> EdgeBoundingBox {
+        let tx = self.x_poly.derivative().root().clamp(0.0, 1.0);
+        let ty = self.y_poly.derivative().root().clamp(0.0, 1.0);
+        let possible_x = [0.0, tx, 1.0].map(|t| self.x_poly.value(t));
+        let possible_y = [0.0, ty, 1.0].map(|t| self.y_poly.value(t));
+        EdgeBoundingBox {
+            left: possible_x.into_iter().fold(f32::INFINITY, |a, b| a.min(b)),
+            right: possible_x
+                .into_iter()
+                .fold(f32::NEG_INFINITY, |a, b| a.max(b)),
+            top: possible_y
+                .into_iter()
+                .fold(f32::NEG_INFINITY, |a, b| a.max(b)),
+            bottom: possible_y.into_iter().fold(f32::INFINITY, |a, b| a.min(b)),
+        }
     }
 }
 
@@ -240,5 +282,22 @@ impl Edge for CubicCurve {
         let x = self.x_poly.derivative().value(t);
         let y = self.y_poly.derivative().value(t);
         (x, y)
+    }
+
+    fn bbox(&self) -> EdgeBoundingBox {
+        let [tx_a, tx_b] = self.x_poly.derivative().roots();
+        let [ty_a, ty_b] = self.y_poly.derivative().roots();
+        let possible_x = [0.0, tx_a, tx_b, 1.0].map(|t| self.x_poly.value(t.clamp(0.0, 1.0)));
+        let possible_y = [0.0, ty_a, ty_b, 1.0].map(|t| self.y_poly.value(t.clamp(0.0, 1.0)));
+        EdgeBoundingBox {
+            left: possible_x.into_iter().fold(f32::INFINITY, |a, b| a.min(b)),
+            right: possible_x
+                .into_iter()
+                .fold(f32::NEG_INFINITY, |a, b| a.max(b)),
+            top: possible_y
+                .into_iter()
+                .fold(f32::NEG_INFINITY, |a, b| a.max(b)),
+            bottom: possible_y.into_iter().fold(f32::INFINITY, |a, b| a.min(b)),
+        }
     }
 }

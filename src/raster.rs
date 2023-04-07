@@ -1,6 +1,6 @@
 use ttf_parser::Face;
 
-use crate::edge::{CubicCurve, Line, QuadCurve};
+use crate::edge::{CubicCurve, Line, QuadCurve, Segment};
 
 #[derive(Clone, Copy, Debug)]
 pub struct RasteredSize {
@@ -98,7 +98,7 @@ pub fn can_clamp_left(unclamped: RasteredSize, padding: f32, face: &Face<'_>, ch
         }
         let mut nearest_dist2 = f32::INFINITY;
         let mut nearest_point = (x, y);
-        for segment in &segments.segments {
+        for (segment, _bbox) in &segments.segments {
             let t = segment.nearest_t((unclamped.left, y));
             let (px, py) = segment.point(t);
             let dist2 = (px - x).powi(2) + (py - y).powi(2);
@@ -117,7 +117,7 @@ pub fn can_clamp_left(unclamped: RasteredSize, padding: f32, face: &Face<'_>, ch
 
 pub struct Segments {
     face_height: f32,
-    segments: Vec<crate::edge::Segment>,
+    segments: Vec<(crate::edge::Segment, crate::edge::EdgeBoundingBox)>,
     cursor_x: f32,
     cursor_y: f32,
 }
@@ -142,8 +142,9 @@ impl ttf_parser::OutlineBuilder for Segments {
     fn line_to(&mut self, x: f32, y: f32) {
         let x = x / self.face_height;
         let y = y / self.face_height;
-        self.segments
-            .push(Line::new((self.cursor_x, self.cursor_y), (x, y)).into());
+        let segment: Segment = Line::new((self.cursor_x, self.cursor_y), (x, y)).into();
+        let bbox = segment.bbox();
+        self.segments.push((segment, bbox));
         self.cursor_x = x;
         self.cursor_y = y;
     }
@@ -153,8 +154,10 @@ impl ttf_parser::OutlineBuilder for Segments {
         let y1 = y1 / self.face_height;
         let x = x / self.face_height;
         let y = y / self.face_height;
-        self.segments
-            .push(QuadCurve::new((self.cursor_x, self.cursor_y), (x1, y1), (x, y)).into());
+        let segment: Segment =
+            QuadCurve::new((self.cursor_x, self.cursor_y), (x1, y1), (x, y)).into();
+        let bbox = segment.bbox();
+        self.segments.push((segment, bbox));
         self.cursor_x = x;
         self.cursor_y = y;
     }
@@ -166,9 +169,10 @@ impl ttf_parser::OutlineBuilder for Segments {
         let y2 = y2 / self.face_height;
         let x = x / self.face_height;
         let y = y / self.face_height;
-        self.segments.push(
-            CubicCurve::new((self.cursor_x, self.cursor_y), (x1, y1), (x2, y2), (x, y)).into(),
-        );
+        let segment: Segment =
+            CubicCurve::new((self.cursor_x, self.cursor_y), (x1, y1), (x2, y2), (x, y)).into();
+        let bbox = segment.bbox();
+        self.segments.push((segment, bbox));
         self.cursor_x = x;
         self.cursor_y = y;
     }
@@ -210,31 +214,36 @@ pub fn raster<T>(
             let y = rastered_size.bottom + (y * (rastered_size.top - rastered_size.bottom));
             let mut nearest = None;
             let mut nearest_dist2 = f32::INFINITY;
-            for (i, segment) in segments.segments.iter().enumerate() {
+            for (i, (segment, seg_bbox)) in segments.segments.iter().enumerate() {
+                let bbox_near_x = x.clamp(seg_bbox.left, seg_bbox.right);
+                let bbox_near_y = y.clamp(seg_bbox.bottom, seg_bbox.top);
+                let bbox_dist2 = (bbox_near_x - x).powi(2) + (bbox_near_y - y).powi(2);
+                if bbox_dist2 > nearest_dist2 {
+                    continue;
+                }
                 let t = segment.nearest_t((x, y));
                 let (px, py) = segment.point(t);
                 let dist2 = (px - x).powi(2) + (py - y).powi(2);
                 if dist2 < nearest_dist2 {
                     nearest_dist2 = dist2;
-                    nearest = Some((i, t));
+                    nearest = Some((i, t, px, py));
                 }
             }
-            if let Some((i, t)) = nearest {
-                let (cx, cy) = segments.segments[i].point(t);
-                let (dx, dy) = segments.segments[i].direction(t);
+            if let Some((i, t, cx, cy)) = nearest {
+                let (dx, dy) = segments.segments[i].0.direction(t);
                 let (dx, dy) = if t == 0.0 {
                     let other_seg = if i == 0 {
                         segments.segments.len() - 1
                     } else {
                         i - 1
                     };
-                    let (odx, ody) = segments.segments[other_seg].direction(1.0);
+                    let (odx, ody) = segments.segments[other_seg].0.direction(1.0);
                     let dlen = (dx.powi(2) + dy.powi(2)).sqrt();
                     let odlen = (odx.powi(2) + ody.powi(2)).sqrt();
                     ((dx / dlen + odx / odlen), (dy / dlen + ody / odlen))
                 } else if t == 1.0 {
                     let other_seg = (i + 1) % segments.segments.len();
-                    let (odx, ody) = segments.segments[other_seg].direction(0.0);
+                    let (odx, ody) = segments.segments[other_seg].0.direction(0.0);
                     let dlen = (dx.powi(2) + dy.powi(2)).sqrt();
                     let odlen = (odx.powi(2) + ody.powi(2)).sqrt();
                     ((dx / dlen + odx / odlen), (dy / dlen + ody / odlen))

@@ -53,6 +53,24 @@ impl<const N: usize> std::fmt::Debug for Polynomial<N> {
     }
 }
 
+impl Polynomial<2> {
+    pub fn root(&self) -> f32 {
+        let [a, b] = self.coeffs;
+        -b / a
+    }
+}
+
+impl Polynomial<3> {
+    pub fn roots(&self) -> [f32; 2] {
+        let [a, b, c] = self.coeffs;
+        let square = b.powi(2) - (4.0 * a * c);
+        let sqrt = square.sqrt();
+        let plus = (-b + sqrt) / (2.0 * a);
+        let minus = (-b - sqrt) / (2.0 * a);
+        [plus, minus]
+    }
+}
+
 macro_rules! impl_derivative {
     ($N:literal) => {
         impl Polynomial<$N> {
