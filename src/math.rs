@@ -74,10 +74,11 @@ macro_rules! impl_derivative {
     ($N:literal newtons) => {
         impl_derivative! { $N }
         impl Polynomial<$N> {
-            pub fn newtons_root(&self, mut guess: f32, iters: u8) -> f32 {
+            pub fn newtons_root(&self, mut guess: f32, mut iters: u8) -> f32 {
                 let dself = self.derivative();
-                for _ in 0..iters {
+                while iters > 0 {
                     guess = guess - (self.value(guess) / dself.value(guess));
+                    iters -= 1;
                 }
                 guess
             }
@@ -148,15 +149,19 @@ macro_rules! impl_mul {
 
             fn mul(self, rhs: Polynomial<$M>) -> Self::Output {
                 const NM: usize = $N + $M - 1;
-                let mut coeffs = [(); NM].map(|()| 0.0);
-                for n in 0..$N {
+                let mut coeffs = [0.0; NM];
+                let mut n = 0;
+                while n < $N {
                     let n_exp = $N - 1 - n;
-                    for m in 0..$M {
+                    let mut m = 0;
+                    while m < $M {
                         let m_exp = $M - 1 - m;
                         let out_exp = n_exp + m_exp;
                         let out_idx = NM - 1 - out_exp;
                         coeffs[out_idx] += self.coeffs[n] * rhs.coeffs[m];
+                        m += 1;
                     }
+                    n += 1;
                 }
                 Polynomial { coeffs }
             }

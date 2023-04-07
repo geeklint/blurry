@@ -173,7 +173,8 @@ impl Edge for QuadCurve {
         } else {
             (end_dist_sq, 1.0)
         };
-        for test in [0.0, 0.25, 0.5, 0.75, 1.0] {
+        let mut test = 0.0;
+        while test <= 1.0 {
             let root = dd.newtons_root(test, 8);
             if (0.0..=1.0).contains(&root) {
                 let dist_sq = distance_sq.value(root);
@@ -182,6 +183,7 @@ impl Edge for QuadCurve {
                     best_t = root;
                 }
             }
+            test += 0.25;
         }
         best_t
     }
