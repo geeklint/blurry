@@ -5,12 +5,12 @@ pub struct Polynomial<const N: usize> {
 
 impl<const N: usize> Polynomial<N> {
     pub fn value(&self, t: f32) -> f32 {
+        let mut exp = N.try_into().unwrap();
         self.coeffs
             .into_iter()
-            .enumerate()
-            .map(|(i, coeff)| {
-                let exp = N - 1 - i;
-                coeff * t.powi(exp.try_into().unwrap())
+            .map(|coeff| {
+                exp -= 1;
+                coeff * t.powi(exp)
             })
             .sum()
     }
