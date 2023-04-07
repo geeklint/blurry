@@ -72,16 +72,9 @@ impl Polynomial<3> {
 }
 
 macro_rules! impl_derivative {
-    ($N:literal) => {
+    ($N:literal newtons) => {
+        impl_derivative! { $N }
         impl Polynomial<$N> {
-            pub fn derivative(&self) -> Polynomial<{ $N - 1 }> {
-                let coeffs = std::array::from_fn(|x| {
-                    let base_exp = u8::try_from($N - 1 - x).unwrap();
-                    self.coeffs[x] * f32::from(base_exp)
-                });
-                Polynomial { coeffs }
-            }
-
             pub fn newtons_root(&self, mut guess: f32, iters: u8) -> f32 {
                 let dself = self.derivative();
                 for _ in 0..iters {
@@ -91,13 +84,23 @@ macro_rules! impl_derivative {
             }
         }
     };
+    ($N:literal) => {
+        impl Polynomial<$N> {
+            pub fn derivative(&self) -> Polynomial<{ $N - 1 }> {
+                let coeffs = std::array::from_fn(|x| {
+                    let base_exp = u8::try_from($N - 1 - x).unwrap();
+                    self.coeffs[x] * f32::from(base_exp)
+                });
+                Polynomial { coeffs }
+            }
+        }
+    };
 }
 
-impl_derivative!(2);
 impl_derivative!(3);
-impl_derivative!(4);
+impl_derivative!(4 newtons);
 impl_derivative!(5);
-impl_derivative!(6);
+impl_derivative!(6 newtons);
 impl_derivative!(7);
 
 impl<const N: usize> std::ops::Add for Polynomial<N> {
@@ -149,6 +152,5 @@ macro_rules! impl_mul {
     };
 }
 
-impl_mul!(2 ^ 2);
 impl_mul!(3 ^ 2);
 impl_mul!(4 ^ 2);
