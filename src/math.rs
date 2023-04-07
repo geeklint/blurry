@@ -86,10 +86,13 @@ macro_rules! impl_derivative {
     ($N:literal) => {
         impl Polynomial<$N> {
             pub fn derivative(&self) -> Polynomial<{ $N - 1 }> {
-                let coeffs = std::array::from_fn(|x| {
-                    let base_exp = u8::try_from($N - 1 - x).unwrap();
-                    self.coeffs[x] * f32::from(base_exp)
-                });
+                let mut coeffs = [0.0; $N - 1];
+                let mut i = 0_u8;
+                while i < ($N - 1) {
+                    let idx = i as usize;
+                    coeffs[idx] = self.coeffs[idx] * f32::from($N - 1 - i);
+                    i += 1;
+                }
                 Polynomial { coeffs }
             }
         }
@@ -106,7 +109,12 @@ impl<const N: usize> std::ops::Add for Polynomial<N> {
     type Output = Polynomial<N>;
 
     fn add(self, rhs: Self) -> Self::Output {
-        let coeffs = std::array::from_fn(|i| self.coeffs[i] + rhs.coeffs[i]);
+        let mut coeffs = [0.0; N];
+        let mut i = 0;
+        while i < N {
+            coeffs[i] = self.coeffs[i] + rhs.coeffs[i];
+            i += 1;
+        }
         Polynomial { coeffs }
     }
 }
@@ -115,7 +123,12 @@ impl<const N: usize> std::ops::Sub for Polynomial<N> {
     type Output = Polynomial<N>;
 
     fn sub(self, rhs: Self) -> Self::Output {
-        let coeffs = std::array::from_fn(|i| self.coeffs[i] - rhs.coeffs[i]);
+        let mut coeffs = [0.0; N];
+        let mut i = 0;
+        while i < N {
+            coeffs[i] = self.coeffs[i] - rhs.coeffs[i];
+            i += 1;
+        }
         Polynomial { coeffs }
     }
 }
