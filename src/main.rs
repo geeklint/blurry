@@ -7,7 +7,6 @@ fn main() {
             blurry::Settings {
                 size: blurry::AssetSize::TextureSize(255, 255),
                 padding_ratio: 0.2,
-                left_clamp_opt: false,
             },
             "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
                 .chars()

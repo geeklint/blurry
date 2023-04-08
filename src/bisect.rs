@@ -8,18 +8,16 @@ pub struct BisectArgs<T> {
     pub attempts: u32,
 }
 
-pub fn bisect_font_size<'a, T, I, F>(
+pub fn bisect_font_size<'a, T, I>(
     asset_width: u16,
     asset_height: u16,
     padding_ratio: f32,
     args: BisectArgs<f32>,
     glyphs: &I,
-    mut clamp: F,
 ) -> (f32, PackResult<'a, T>)
 where
     T: Clone,
     I: 'a + Clone + Iterator<Item = (T, &'a Face<'a>, char)>,
-    F: FnMut(&Face<'_>, char) -> bool,
 {
     let mut attempts_remaining = args.attempts;
     let BisectArgs {
@@ -32,13 +30,8 @@ where
 
         let check_size = (lower_bound + too_big) / 2.0;
         let rects = glyphs.clone().map(|(id, face, ch)| {
-            let rastered_size = crate::raster::get_rastered_size(
-                padding_ratio,
-                clamp(face, ch),
-                check_size,
-                face,
-                ch,
-            );
+            let rastered_size =
+                crate::raster::get_rastered_size(padding_ratio, check_size, face, ch);
             crunch::Item {
                 data: Box::new((id, face, ch, rastered_size)),
                 w: (rastered_size.pixel_width + 1).try_into().unwrap(),
@@ -67,21 +60,18 @@ where
     }
 }
 
-pub fn bisect_asset_size<'a, T, I, F>(
+pub fn bisect_asset_size<'a, T, I>(
     font_size: f32,
     padding_ratio: f32,
     glyphs: &I,
-    mut clamp: F,
 ) -> (u16, PackResult<'a, T>)
 where
     T: Clone,
     I: 'a + Clone + Iterator<Item = (T, &'a Face<'a>, char)>,
-    F: FnMut(&Face<'_>, char) -> bool,
 {
     let mut too_small = (font_size.floor().clamp(2.0, u16::MAX.into()) as u16) - 1;
     let mut map_glyphs = |(id, face, ch)| {
-        let rastered_size =
-            crate::raster::get_rastered_size(padding_ratio, clamp(face, ch), font_size, face, ch);
+        let rastered_size = crate::raster::get_rastered_size(padding_ratio, font_size, face, ch);
         crunch::Item {
             data: Box::new((id, face, ch, rastered_size)),
             w: (rastered_size.pixel_width + 1).try_into().unwrap(),

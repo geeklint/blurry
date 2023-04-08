@@ -17,56 +17,29 @@ pub struct RasteredSize {
     pub top: f32,
     /// The bottom edge of the bounding box in percentage of font height
     pub bottom: f32,
-    /// If this glyph uses the left-clamp trick, this is the clamped edge
-    /// in percentage of font height
-    pub left_clamped: f32,
-    /// If this glyph uses the left-clamp trick, this is the clamped edge
-    /// in percentage of font height with an additional pixel that is
-    /// rendered outside of the clamped area for blending purposes
-    pub left_clamped_internal_raster: f32,
 }
 
 pub fn get_rastered_size(
     padding_ratio: f32,
-    clamp_left: bool,
     font_size: f32,
     face: &Face<'_>,
     ch: char,
 ) -> RasteredSize {
     let face_height = f32::from(face.height());
     let padding = padding_ratio;
-    let left_padding = if clamp_left { 0.0 } else { padding };
     let rel_from = |font_value: i16| f32::from(font_value) / face_height;
     let Some(glyph_id) = face.glyph_index(ch) else {
         panic!("glyph '{ch:?}' not found in face");
     };
     let bbox = face.glyph_bounding_box(glyph_id).unwrap();
-    // the width without a bonus pixel added for blending
-    let edgeless_width = rel_from(bbox.width()) + padding + left_padding;
+    let width = rel_from(bbox.width()) + (2.0 * padding);
     let height = rel_from(bbox.height()) + (2.0 * padding);
-    let pixel_width_f = (edgeless_width * font_size)
-        .round()
-        .clamp(0.0, u16::MAX.into());
+    let pixel_width = (width * font_size).round().clamp(0.0, u16::MAX.into()) as u16;
     let pixel_height = (height * font_size).round().clamp(0.0, u16::MAX.into()) as u16;
     let left = rel_from(bbox.x_min) - padding;
     let right = rel_from(bbox.x_max) + padding;
     let top = rel_from(bbox.y_max) + padding;
     let bottom = rel_from(bbox.y_min) - padding;
-    let (pixel_width, left_clamped, left_clamped_internal_raster);
-    if clamp_left {
-        // The width in font-units divided by the (rounded) number of pixels
-        // gives the actual size of 1px in font units, which is slightly
-        // distored vs `1.0 / font_size`; this is correct since we
-        // can produce distorted glyphs which are undistorted by rendering.
-        let one_pixel = edgeless_width / pixel_width_f;
-        pixel_width = (pixel_width_f as u16) + 1;
-        left_clamped = rel_from(bbox.x_min);
-        left_clamped_internal_raster = left_clamped - one_pixel;
-    } else {
-        pixel_width = pixel_width_f as u16;
-        left_clamped = left;
-        left_clamped_internal_raster = left;
-    }
     RasteredSize {
         pixel_width,
         pixel_height,
@@ -74,45 +47,7 @@ pub fn get_rastered_size(
         right,
         top,
         bottom,
-        left_clamped,
-        left_clamped_internal_raster,
     }
-}
-
-pub fn can_clamp_left(unclamped: RasteredSize, padding: f32, face: &Face<'_>, ch: char) -> bool {
-    let samples = unclamped.pixel_height;
-    let height = unclamped.top - unclamped.bottom;
-    let glyph_id = face.glyph_index(ch).unwrap();
-    let mut segments = Segments::new(f32::from(face.height()));
-    let Some(bbox) = face.outline_glyph(glyph_id, &mut segments) else {return false};
-    let bottom = f32::from(bbox.y_min) / f32::from(face.height());
-    let top = f32::from(bbox.y_max) / f32::from(face.height());
-    let vertical_pixel = (unclamped.top - unclamped.bottom) / (unclamped.pixel_height as f32);
-    let error_slope = vertical_pixel / padding;
-    let x = unclamped.left;
-    for sample in 0..samples {
-        let y_percent = ((sample as f32) + 0.5) / (samples as f32);
-        let y = unclamped.bottom + (y_percent * height);
-        if y < bottom || y > top {
-            continue;
-        }
-        let mut nearest_dist2 = f32::INFINITY;
-        let mut nearest_point = (x, y);
-        for (segment, _bbox) in &segments.segments {
-            let t = segment.nearest_t((unclamped.left, y));
-            let (px, py) = segment.point(t);
-            let dist2 = (px - x).powi(2) + (py - y).powi(2);
-            if dist2 < nearest_dist2 {
-                nearest_dist2 = dist2;
-                nearest_point = (px, py);
-            }
-        }
-        let slope = (nearest_point.1 - y).abs() / (nearest_point.0 - x).abs();
-        if slope > error_slope {
-            return false;
-        }
-    }
-    true
 }
 
 pub struct Segments {
@@ -209,8 +144,7 @@ pub fn raster<T>(
             let x = (dest_x as f32 + 0.5) / ((item.rect.w - 1) as f32);
             let dest_x = dest_x + item.rect.x;
             let (x, y) = if rotate { (y, x) } else { (x, y) };
-            let x = rastered_size.left_clamped_internal_raster
-                + (x * (rastered_size.right - rastered_size.left_clamped_internal_raster));
+            let x = rastered_size.left + (x * (rastered_size.right - rastered_size.left));
             let y = rastered_size.bottom + (y * (rastered_size.top - rastered_size.bottom));
             let mut nearest = None;
             let mut nearest_dist2 = f32::INFINITY;
