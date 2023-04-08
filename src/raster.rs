@@ -146,8 +146,16 @@ pub fn raster<T>(
             let (x, y) = if rotate { (y, x) } else { (x, y) };
             let x = rastered_size.left + (x * (rastered_size.right - rastered_size.left));
             let y = rastered_size.bottom + (y * (rastered_size.top - rastered_size.bottom));
+            let outside = (x - rastered_size.left) < padding
+                || (rastered_size.right - x) < padding
+                || (y - rastered_size.bottom) < padding
+                || (rastered_size.top - y) < padding;
             let mut nearest = None;
-            let mut nearest_dist2 = f32::INFINITY;
+            let mut nearest_dist2 = if outside {
+                padding * padding
+            } else {
+                f32::INFINITY
+            };
             // first pass, skip anything that requires newton's method
             for (i, (segment, _seg_bbox)) in segments.segments.iter().enumerate() {
                 if matches!(segment, Segment::Line(_)) {
