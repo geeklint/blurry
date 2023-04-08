@@ -150,40 +150,32 @@ impl<const N: usize> std::ops::Sub for Polynomial<N> {
     }
 }
 
-macro_rules! impl_mul {
-    ($N:literal ^ 2) => {
-        impl_mul! {$N * $N}
-        impl Polynomial<$N> {
-            pub fn pow2(self) -> Polynomial<{ $N + $N - 1 }> {
-                self * self
-            }
-        }
-    };
-    ($N:literal * $M:literal) => {
-        impl std::ops::Mul<Polynomial<$M>> for Polynomial<$N> {
-            type Output = Polynomial<{ $N + $M - 1 }>;
-
-            fn mul(self, rhs: Polynomial<$M>) -> Self::Output {
-                const NM: usize = $N + $M - 1;
-                let mut coeffs = [0.0; NM];
-                let mut n = 0;
-                while n < $N {
-                    let n_exp = $N - 1 - n;
-                    let mut m = 0;
-                    while m < $M {
-                        let m_exp = $M - 1 - m;
-                        let out_exp = n_exp + m_exp;
-                        let out_idx = NM - 1 - out_exp;
-                        coeffs[out_idx] += self.coeffs[n] * rhs.coeffs[m];
-                        m += 1;
-                    }
-                    n += 1;
-                }
-                Polynomial { coeffs }
-            }
-        }
-    };
+impl Polynomial<3> {
+    pub fn pow2(self) -> Polynomial<5> {
+        let [a, b, c] = self.coeffs;
+        let coeffs = [
+            a * a,
+            (a * b) + (b * a),
+            (a * c) + (b * b) + (c * a),
+            (b * c) + (c * b),
+            c * c,
+        ];
+        Polynomial { coeffs }
+    }
 }
 
-impl_mul!(3 ^ 2);
-impl_mul!(4 ^ 2);
+impl Polynomial<4> {
+    pub fn pow2(self) -> Polynomial<7> {
+        let [a, b, c, d] = self.coeffs;
+        let coeffs = [
+            a * a,
+            (a * b) + (b * a),
+            (a * c) + (b * b) + (c * a),
+            (a * d) + (b * c) + (c * b) + (d * a),
+            (b * d) + (c * c) + (d * b),
+            (c * d) + (d * c),
+            d * d,
+        ];
+        Polynomial { coeffs }
+    }
+}
