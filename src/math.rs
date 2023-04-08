@@ -3,17 +3,32 @@ pub struct Polynomial<const N: usize> {
     pub coeffs: [f32; N],
 }
 
-impl<const N: usize> Polynomial<N> {
-    pub fn value(&self, t: f32) -> f32 {
-        let mut accum = self.coeffs[0];
-        let mut i = 1;
-        while i < N {
-            accum = accum.mul_add(t, self.coeffs[i]);
-            i += 1;
-        }
-        accum
-    }
+macro_rules! one {
+    ($x:tt) => {
+        1
+    };
 }
+
+macro_rules! poly_value {
+    ($head:ident $($coeff:ident)*) => {
+        impl Polynomial<{ 1 $(+ one!($coeff))* }> {
+            pub fn value(&self, t: f32) -> f32 {
+                let [mut $head, $($coeff,)*] = self.coeffs;
+                $(
+                    $head = $head * t + $coeff;
+                )*
+                $head
+            }
+        }
+    };
+}
+
+poly_value! { a b }
+poly_value! { a b c }
+poly_value! { a b c d }
+poly_value! { a b c d e }
+poly_value! { a b c d e f }
+poly_value! { a b c d e f g }
 
 impl<const N: usize> std::fmt::Debug for Polynomial<N> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -89,9 +104,10 @@ macro_rules! impl_derivative {
             pub fn derivative(&self) -> Polynomial<{ $N - 1 }> {
                 let mut coeffs = [0.0; $N - 1];
                 let mut i = 0_u8;
-                while i < ($N - 1) {
+                const LAST: u8 = $N - 1;
+                while i < LAST {
                     let idx = i as usize;
-                    coeffs[idx] = self.coeffs[idx] * f32::from($N - 1 - i);
+                    coeffs[idx] = self.coeffs[idx] * ((LAST - i) as f32);
                     i += 1;
                 }
                 Polynomial { coeffs }
