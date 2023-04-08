@@ -157,7 +157,7 @@ pub fn raster<T>(
                 f32::INFINITY
             };
             // first pass, skip anything that requires newton's method
-            for (i, (segment, _seg_bbox)) in segments.segments.iter().enumerate() {
+            for (i, (segment, seg_bbox)) in segments.segments.iter().enumerate() {
                 if matches!(segment, Segment::Line(_)) {
                     // we can do nearest_t for lines
                     let t = segment.nearest_t((x, y));
@@ -168,6 +168,12 @@ pub fn raster<T>(
                         nearest = Some((i, t, px, py));
                     }
                 } else {
+                    let bbox_near_x = x.clamp(seg_bbox.left, seg_bbox.right);
+                    let bbox_near_y = y.clamp(seg_bbox.bottom, seg_bbox.top);
+                    let bbox_dist2 = (bbox_near_x - x).powi(2) + (bbox_near_y - y).powi(2);
+                    if bbox_dist2 > nearest_dist2 {
+                        continue;
+                    }
                     // just check the end points for curves
                     let (px, py) = segment.point(0.0);
                     let dist2 = (px - x).powi(2) + (py - y).powi(2);
