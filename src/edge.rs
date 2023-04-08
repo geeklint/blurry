@@ -1,5 +1,7 @@
 use crate::math::Polynomial;
 
+const NEWTONS_ITERS: u8 = 4;
+
 pub enum Segment {
     Line(Line),
     Quad(QuadCurve),
@@ -175,7 +177,7 @@ impl Edge for QuadCurve {
         };
         let mut test = 0.0;
         while test <= 1.0 {
-            let root = dd.newtons_root(test, 8);
+            let root = dd.newtons_root(test, NEWTONS_ITERS);
             if (0.0..=1.0).contains(&root) {
                 let dist_sq = distance_sq.value(root);
                 if dist_sq < best_dist_sq {
@@ -267,8 +269,9 @@ impl Edge for CubicCurve {
         } else {
             (end_dist_sq, 1.0)
         };
-        for test in [0.0, 0.25, 0.5, 0.75, 1.0] {
-            let root = dd.newtons_root(test, 8);
+        let mut test = 0.0;
+        while test <= 1.0 {
+            let root = dd.newtons_root(test, NEWTONS_ITERS);
             if (0.0..=1.0).contains(&root) {
                 let dist_sq = distance_sq.value(root);
                 if dist_sq < best_dist_sq {
@@ -276,6 +279,7 @@ impl Edge for CubicCurve {
                     best_t = root;
                 }
             }
+            test += 0.25;
         }
         best_t
     }
