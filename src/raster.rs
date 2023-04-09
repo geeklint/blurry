@@ -1,6 +1,8 @@
 use ttf_parser::Face;
 
-use crate::edge::{CubicCurve, Line, QuadCurve, Segment};
+use crate::{
+    edge::{CubicCurve, EdgeBoundingBox, Line, QuadCurve, Segment},
+};
 
 #[derive(Clone, Copy, Debug)]
 pub struct RasteredSize {
@@ -52,7 +54,8 @@ pub fn get_rastered_size(
 
 pub struct Segments {
     face_height: f32,
-    segments: Vec<(crate::edge::Segment, crate::edge::EdgeBoundingBox)>,
+    segments: Vec<(crate::edge::Segment, EdgeBoundingBox)>,
+    curve_start: usize,
     cursor_x: f32,
     cursor_y: f32,
 }
@@ -62,6 +65,7 @@ impl Segments {
         Self {
             face_height,
             segments: Vec::new(),
+            curve_start: usize::MAX,
             cursor_x: 0.0,
             cursor_y: 0.0,
         }
@@ -72,6 +76,15 @@ impl ttf_parser::OutlineBuilder for Segments {
     fn move_to(&mut self, x: f32, y: f32) {
         self.cursor_x = x / self.face_height;
         self.cursor_y = y / self.face_height;
+        let segment = Segment::LoopPoint(0.0, 0.0);
+        let bbox = EdgeBoundingBox {
+            left: x,
+            right: x,
+            bottom: y,
+            top: y,
+        };
+        self.curve_start = self.segments.len();
+        self.segments.push((segment, bbox));
     }
 
     fn line_to(&mut self, x: f32, y: f32) {
@@ -112,7 +125,19 @@ impl ttf_parser::OutlineBuilder for Segments {
         self.cursor_y = y;
     }
 
-    fn close(&mut self) {}
+    fn close(&mut self) {
+        let (end_dx, end_dy) = self.segments.last().unwrap().0.direction(1.0);
+        let (start_dx, start_dy) = self.segments[self.curve_start + 1].0.direction(0.0);
+        self.segments[self.curve_start].0 = Segment::LoopPoint(end_dx, end_dy);
+        let end_segment = Segment::LoopPoint(start_dx, start_dy);
+        let end_bbox = EdgeBoundingBox {
+            left: self.cursor_x,
+            right: self.cursor_x,
+            top: self.cursor_y,
+            bottom: self.cursor_y,
+        };
+        self.segments.push((end_segment, end_bbox));
+    }
 }
 
 pub struct Buffer<'a> {
@@ -158,39 +183,46 @@ pub fn raster<T>(
             };
             // first pass, skip anything that requires newton's method
             for (i, (segment, seg_bbox)) in segments.segments.iter().enumerate() {
-                if matches!(segment, Segment::Line(_)) {
-                    // we can do nearest_t for lines
-                    let t = segment.nearest_t((x, y));
-                    let (px, py) = segment.point(t);
-                    let dist2 = (px - x).powi(2) + (py - y).powi(2);
-                    if dist2 < nearest_dist2 {
-                        nearest_dist2 = dist2;
-                        nearest = Some((i, t, px, py));
+                match segment {
+                    Segment::LoopPoint(_, _) => continue,
+                    Segment::Line(_) => {
+                        // we can do nearest_t for lines
+                        let t = segment.nearest_t((x, y));
+                        let (px, py) = segment.point(t);
+                        let dist2 = (px - x).powi(2) + (py - y).powi(2);
+                        if dist2 < nearest_dist2 {
+                            nearest_dist2 = dist2;
+                            nearest = Some((i, t, px, py));
+                        }
                     }
-                } else {
-                    let bbox_near_x = x.clamp(seg_bbox.left, seg_bbox.right);
-                    let bbox_near_y = y.clamp(seg_bbox.bottom, seg_bbox.top);
-                    let bbox_dist2 = (bbox_near_x - x).powi(2) + (bbox_near_y - y).powi(2);
-                    if bbox_dist2 > nearest_dist2 {
-                        continue;
-                    }
-                    // just check the end points for curves
-                    let (px, py) = segment.point(0.0);
-                    let dist2 = (px - x).powi(2) + (py - y).powi(2);
-                    if dist2 < nearest_dist2 {
-                        nearest_dist2 = dist2;
-                        nearest = Some((i, 0.0, px, py));
-                    }
-                    let (px, py) = segment.point(1.0);
-                    let dist2 = (px - x).powi(2) + (py - y).powi(2);
-                    if dist2 < nearest_dist2 {
-                        nearest_dist2 = dist2;
-                        nearest = Some((i, 1.0, px, py));
+                    _ => {
+                        let bbox_near_x = x.clamp(seg_bbox.left, seg_bbox.right);
+                        let bbox_near_y = y.clamp(seg_bbox.bottom, seg_bbox.top);
+                        let bbox_dist2 = (bbox_near_x - x).powi(2) + (bbox_near_y - y).powi(2);
+                        if bbox_dist2 > nearest_dist2 {
+                            continue;
+                        }
+                        // just check the end points for curves
+                        let (px, py) = segment.point(0.0);
+                        let dist2 = (px - x).powi(2) + (py - y).powi(2);
+                        if dist2 < nearest_dist2 {
+                            nearest_dist2 = dist2;
+                            nearest = Some((i, 0.0, px, py));
+                        }
+                        let (px, py) = segment.point(1.0);
+                        let dist2 = (px - x).powi(2) + (py - y).powi(2);
+                        if dist2 < nearest_dist2 {
+                            nearest_dist2 = dist2;
+                            nearest = Some((i, 1.0, px, py));
+                        }
                     }
                 }
             }
             // second pass, skip anything farther than what the first pass found
             for (i, (segment, seg_bbox)) in segments.segments.iter().enumerate() {
+                if matches!(segment, Segment::LoopPoint(_, _)) {
+                    continue;
+                }
                 let bbox_near_x = x.clamp(seg_bbox.left, seg_bbox.right);
                 let bbox_near_y = y.clamp(seg_bbox.bottom, seg_bbox.top);
                 let bbox_dist2 = (bbox_near_x - x).powi(2) + (bbox_near_y - y).powi(2);

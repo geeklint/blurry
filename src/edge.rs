@@ -3,6 +3,7 @@ use crate::math::Polynomial;
 const NEWTONS_ITERS: u8 = 4;
 
 pub enum Segment {
+    LoopPoint(f32, f32),
     Line(Line),
     Quad(QuadCurve),
     Cubic(CubicCurve),
@@ -11,6 +12,7 @@ pub enum Segment {
 impl Segment {
     pub fn point(&self, t: f32) -> (f32, f32) {
         match self {
+            Self::LoopPoint(_, _) => unreachable!(),
             Self::Line(line) => line.point(t),
             Self::Quad(quad) => quad.point(t),
             Self::Cubic(curve) => curve.point(t),
@@ -19,6 +21,7 @@ impl Segment {
 
     pub fn nearest_t(&self, point: (f32, f32)) -> f32 {
         match self {
+            Self::LoopPoint(_, _) => unreachable!(),
             Self::Line(line) => line.nearest_t(point),
             Self::Quad(quad) => quad.nearest_t(point),
             Self::Cubic(curve) => curve.nearest_t(point),
@@ -27,6 +30,7 @@ impl Segment {
 
     pub fn direction(&self, t: f32) -> (f32, f32) {
         match self {
+            Self::LoopPoint(x, y) => (*x, *y),
             Self::Line(line) => line.direction(t),
             Self::Quad(quad) => quad.direction(t),
             Self::Cubic(curve) => curve.direction(t),
@@ -35,6 +39,7 @@ impl Segment {
 
     pub fn bbox(&self) -> EdgeBoundingBox {
         match self {
+            Self::LoopPoint(_, _) => unreachable!(),
             Self::Line(line) => line.bbox(),
             Self::Quad(quad) => quad.bbox(),
             Self::Cubic(curve) => curve.bbox(),
