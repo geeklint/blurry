@@ -2,6 +2,7 @@ use ttf_parser::Face;
 
 use crate::{
     edge::{CubicCurve, EdgeBoundingBox, Line, QuadCurve, Segment},
+    GlyphRequest,
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -26,14 +27,12 @@ pub fn get_rastered_size(
     font_size: f32,
     face: &Face<'_>,
     ch: char,
-) -> RasteredSize {
+) -> Result<RasteredSize, char> {
     let face_height = f32::from(face.height());
     let padding = padding_ratio;
     let rel_from = |font_value: i16| f32::from(font_value) / face_height;
-    let Some(glyph_id) = face.glyph_index(ch) else {
-        panic!("glyph '{ch:?}' not found in face");
-    };
-    let bbox = face.glyph_bounding_box(glyph_id).unwrap();
+    let glyph_id = face.glyph_index(ch).ok_or(ch)?;
+    let bbox = face.glyph_bounding_box(glyph_id).ok_or(ch)?;
     let width = rel_from(bbox.width()) + (2.0 * padding);
     let height = rel_from(bbox.height()) + (2.0 * padding);
     let pixel_width = (width * font_size).round().clamp(0.0, u16::MAX.into()) as u16;
@@ -42,14 +41,14 @@ pub fn get_rastered_size(
     let right = rel_from(bbox.x_max) + padding;
     let top = rel_from(bbox.y_max) + padding;
     let bottom = rel_from(bbox.y_min) - padding;
-    RasteredSize {
+    Ok(RasteredSize {
         pixel_width,
         pixel_height,
         left,
         right,
         top,
         bottom,
-    }
+    })
 }
 
 pub struct Segments {
@@ -155,11 +154,18 @@ impl<'a> Buffer<'a> {
 pub fn raster<T>(
     mut buffer: Buffer<'_>,
     padding: f32,
-    item: crunch::PackedItem<Box<(T, &Face<'_>, char, RasteredSize)>>,
-) {
-    let (_id, face, ch, rastered_size) = *item.data;
+    item: &crunch::PackedItem<Box<(GlyphRequest<'_, T>, RasteredSize)>>,
+) -> Result<(), crate::Error> {
+    let (
+        GlyphRequest {
+            face, codepoint, ..
+        },
+        rastered_size,
+    ) = &*item.data;
     let rotate = (item.rect.w - 1) != rastered_size.pixel_width.into();
-    let glyph_id = face.glyph_index(ch).unwrap();
+    let glyph_id = face
+        .glyph_index(*codepoint)
+        .ok_or(crate::Error::MissingGlyph(*codepoint))?;
     let mut segments = Segments::new(f32::from(face.height()));
     face.outline_glyph(glyph_id, &mut segments);
     for dest_y in 0..(item.rect.h - 1) {
@@ -267,4 +273,5 @@ pub fn raster<T>(
             }
         }
     }
+    Ok(())
 }
