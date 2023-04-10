@@ -4,8 +4,11 @@ use glow::HasContext;
 
 use blurry::{latin1, ttf_parser::Face, FontAssetBuilder, Glyph, GlyphRequest};
 
+static DISPLAY_FONT_SIZE: f32 = 30.0;
+const PADDING_RATIO: f32 = 0.3;
+
 #[derive(Clone, Copy, Debug)]
-pub struct AdvanceWidth(f32);
+struct AdvanceWidth(f32);
 
 fn update_font(
     gl: &glow::Context,
@@ -15,7 +18,7 @@ fn update_font(
     let face = Face::parse(ttf_data, 0).map_err(|_| "failed to parse font file")?;
     let height = f32::from(face.height());
     let mut asset = FontAssetBuilder::with_font_size(30.0)
-        .with_padding_ratio(0.3)
+        .with_padding_ratio(PADDING_RATIO)
         .build(latin1().map_while(|codepoint| {
             let advance_width: f32 = face
                 .glyph_index(codepoint)
@@ -81,7 +84,6 @@ fn update_font(
     Ok(asset.metadata)
 }
 
-static FONT_SIZE: f32 = 42.0;
 static FIRST_FONT: &[u8] = include_bytes!("roboto/Roboto-Regular.ttf");
 
 #[derive(Clone, Copy, Debug)]
@@ -107,7 +109,7 @@ static EFFECTS: &[EffectPreset] = &[
         effects: &[(
             Offset(0.0, 0.0),
             Color(0.867, 0.867, 0.867, 1.0),
-            Config(0.5, 2.0, 0.048),
+            Config(0.5, 2.0, 0.0),
         )],
     },
     EffectPreset {
@@ -122,7 +124,7 @@ static EFFECTS: &[EffectPreset] = &[
             (
                 Offset(0.0, 0.0),
                 Color(1.0, 1.0, 1.0, 1.0),
-                Config(0.5, 2.0, 0.048),
+                Config(0.5, 2.0, 0.0),
             ),
         ],
     },
@@ -133,12 +135,12 @@ static EFFECTS: &[EffectPreset] = &[
             (
                 Offset(0.0, 0.0),
                 Color(1.0, 1.0, 1.0, 1.0),
-                Config(0.1, 2.0, 0.048),
+                Config(0.1, 2.0, 0.0),
             ),
             (
                 Offset(0.0, 0.0),
                 Color(0.0, 0.656, 1.0, 1.0),
-                Config(0.45, 2.0, 0.048),
+                Config(0.45, 2.0, 0.0),
             ),
         ],
     },
@@ -149,12 +151,12 @@ static EFFECTS: &[EffectPreset] = &[
             (
                 Offset(0.0, 0.0),
                 Color(0.0, 0.0, 0.0, 1.0),
-                Config(0.4, 2.0, 0.04),
+                Config(0.4, 2.0, 0.0),
             ),
             (
                 Offset(0.0, 0.0),
                 Color(1.0, 1.0, 1.0, 1.0),
-                Config(0.5, 2.0, 0.04),
+                Config(0.5, 2.0, 0.0),
             ),
         ],
     },
@@ -192,8 +194,8 @@ fn main() {
             .window()
             .inner_size()
             .to_logical(window.window().scale_factor());
-        let mut font_mul_x = 2.0 * FONT_SIZE / logical_size.width;
-        let mut font_mul_y = 2.0 * FONT_SIZE / logical_size.height;
+        let mut font_mul_x = 2.0 * DISPLAY_FONT_SIZE / logical_size.width;
+        let mut font_mul_y = 2.0 * DISPLAY_FONT_SIZE / logical_size.height;
 
         event_loop.run(move |event, _, control_flow| {
             use glutin::{
@@ -254,6 +256,12 @@ fn main() {
                     for (Offset(x, y), Color(r, g, b, a), Config(start, end, smoothing)) in
                         effect_preset.effects.iter().copied()
                     {
+                        let smoothing = if smoothing == 0.0 {
+                            let distance_range_in_px = DISPLAY_FONT_SIZE * (2.0 * PADDING_RATIO);
+                            1.0 / distance_range_in_px
+                        } else {
+                            smoothing
+                        };
                         gl.uniform_2_f32(offset_uniform.as_ref(), x * font_mul_x, y * font_mul_y);
                         gl.uniform_4_f32(color_uniform.as_ref(), r, g, b, a);
                         gl.uniform_3_f32(config_uniform.as_ref(), start, end, smoothing);
@@ -272,12 +280,11 @@ fn main() {
                             .window()
                             .inner_size()
                             .to_logical(window.window().scale_factor());
-                        font_mul_x = 2.0 * FONT_SIZE / logical_size.width;
-                        font_mul_y = 2.0 * FONT_SIZE / logical_size.height;
+                        font_mul_x = 2.0 * DISPLAY_FONT_SIZE / logical_size.width;
+                        font_mul_y = 2.0 * DISPLAY_FONT_SIZE / logical_size.height;
                         window.window().request_redraw();
                     }
                     WindowEvent::DroppedFile(path) => {
-                        dbg!(&path);
                         match std::fs::read(path) {
                             Ok(ttf_data) => match update_font(&gl, texture, &ttf_data) {
                                 Ok(new_glyphs) => {
@@ -347,9 +354,8 @@ unsafe fn setup_shader_program(gl: &glow::Context) -> glow::Program {
         out vec4 out_color;
         void main() {
             float dist = texture2D(sdf, uv.xy).r;
-            float blend_dist = max(config.z, length(vec2(dFdx(dist), dFdy(dist))));
-            float start = 0.5 + 0.5 * (dist - config.x) / blend_dist;
-            float end = 0.5 + 0.5 * (config.y - dist) / blend_dist;
+            float start = 0.5 + (dist - config.x) / config.z;
+            float end = 0.5 + (config.y - dist) / config.z;
             float inside = clamp(min(start, end), 0.0, 1.0);
             out_color = color * inside;
         }

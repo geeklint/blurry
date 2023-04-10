@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: (Apache-2.0 OR MIT) */
+/* Copyright © 2023 Violet Leonard */
+
 use crate::math::Polynomial;
 
 const NEWTONS_ITERS: u8 = 4;

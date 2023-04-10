@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: (Apache-2.0 OR MIT) */
+/* Copyright © 2023 Violet Leonard */
+
 #[derive(Clone, Copy)]
 pub struct Polynomial<const N: usize> {
     pub coeffs: [f32; N],
