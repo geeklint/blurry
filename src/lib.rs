@@ -232,24 +232,44 @@ pub struct Glyph<T> {
     /// that will position the resulting SDF so that the middle distance
     /// describes a character as specified by the font.
     pub top: f32,
+
+    /// The left edge of the rendered glyph as a texture coordinate
     pub tex_left: f32,
+
+    /// The right edge of the rendered glyph as a texture coordinate
     pub tex_right: f32,
+
+    /// The top edge of the rendered glyph as a texture coordinate
     pub tex_top: f32,
+
+    /// The bottom edge of the rendered glyph as a texture coordinate
     pub tex_bottom: f32,
 }
 
+/// Returns an iterator of the chars you would want to pass to
+/// [`build`](FontAssetBuilder::build) if you will be using the rendered font to
+/// display hexadecimal values.
 pub fn hexdigits() -> impl Clone + Iterator<Item = char> {
     b"0123456789abcdefABCDEFxX".iter().copied().map(char::from)
 }
 
+/// Returns an iterator of the chars you would want to pass to
+/// [`build`](FontAssetBuilder::build) if you will be using the rendered font to
+/// display ascii text.
 pub fn ascii() -> impl Clone + Iterator<Item = char> {
     (b'!'..=b'~').map(char::from)
 }
 
+/// Returns an iterator of the chars you would want to pass to
+/// [`build`](FontAssetBuilder::build) if you will be using the rendered font to
+/// display ISO-8859-1 ("Latin 1") text.
 pub fn latin1() -> impl Clone + Iterator<Item = char> {
     ascii().chain((0xa1..=0xff).map(char::from))
 }
 
+/// Returns an iterator of the chars you would want to pass to
+/// [`build`](FontAssetBuilder::build) if you will be using the rendered font to
+/// display ISO-8859-1 ("Latin 1") text with French support.
 pub fn latin1_french() -> impl Clone + Iterator<Item = char> {
     latin1().chain(['\u{0152}', '\u{0153}', '\u{0178}'])
 }
