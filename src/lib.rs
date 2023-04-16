@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: (Apache-2.0 OR MIT) */
+/* SPDX-License-Identifier: (Apache-2.0 OR MIT OR Zlib) */
 /* Copyright © 2023 Violet Leonard */
 
 //! You can use this crate to generate an image atlas containing a signed

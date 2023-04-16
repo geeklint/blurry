@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: (Apache-2.0 OR MIT) */
+/* SPDX-License-Identifier: (Apache-2.0 OR MIT OR Zlib) */
 /* Copyright © 2023 Violet Leonard */
 
 use ttf_parser::Face;
