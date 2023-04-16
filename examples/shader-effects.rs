@@ -26,7 +26,7 @@ fn update_font(
                 .unwrap_or(0)
                 .into();
             Some(GlyphRequest {
-                id: AdvanceWidth(advance_width / height),
+                user_data: AdvanceWidth(advance_width / height),
                 face: &face,
                 codepoint,
             })
@@ -36,6 +36,7 @@ fn update_font(
             blurry::Error::PackingAtlasFailed => {
                 "we failed to pack the glyphs into a single texture"
             }
+            _ => "an unspecified error occurred",
         })?;
     let space_width = face
         .glyph_index(' ')
@@ -43,7 +44,7 @@ fn update_font(
         .map(|w| f32::from(w) / height)
         .unwrap_or(0.25);
     let mut space_glyph = asset.metadata[0];
-    space_glyph.id = AdvanceWidth(space_width);
+    space_glyph.user_data = AdvanceWidth(space_width);
     space_glyph.codepoint = ' ';
     unsafe {
         gl.bind_texture(glow::TEXTURE_2D, Some(texture));
@@ -226,7 +227,7 @@ fn main() {
                     let mut cursor_y = 1.0 - font_mul_y;
                     for ch in text.chars() {
                         if let Some(glyph) = glyphs.iter().find(|glyph| glyph.codepoint == ch) {
-                            let AdvanceWidth(advance) = glyph.id;
+                            let AdvanceWidth(advance) = glyph.user_data;
                             if !ch.is_whitespace() {
                                 if (cursor_x + (advance * font_mul_x)) > 1.0 {
                                     cursor_x = -1.0;

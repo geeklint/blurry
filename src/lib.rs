@@ -44,6 +44,7 @@ pub struct SdfFontAsset<T> {
 
 /// Possible errors that can happen while generating the image
 #[derive(Clone, Copy, Debug)]
+#[non_exhaustive]
 pub enum Error {
     /// This error occurs if the library could not get
     /// all the information it needs to render a glyph
@@ -159,7 +160,7 @@ impl FontAssetBuilder {
             let tex_top =
                 (item.rect.y as f32 + f32::from(rastered_size.pixel_height)) / f32::from(height);
             meta.push(Glyph {
-                id: request.id,
+                user_data: request.user_data,
                 codepoint: request.codepoint,
                 rotated,
                 left,
@@ -184,8 +185,8 @@ impl FontAssetBuilder {
 /// A request for a glyph to be rendered.
 #[derive(Clone, Copy, Debug)]
 pub struct GlyphRequest<'a, T> {
-    /// An id you can use to relate GlyphRequests to rendered Glyphs.
-    pub id: T,
+    /// Some data you can use to associate a rendered Glyph to the submitted GlyphRequest.
+    pub user_data: T,
 
     /// The font face to render the glyph from.
     pub face: &'a Face<'a>,
@@ -204,8 +205,8 @@ enum AssetSize {
 #[derive(Clone, Copy, Debug)]
 #[non_exhaustive]
 pub struct Glyph<T> {
-    /// The id from the GlyphRequest.
-    pub id: T,
+    /// The user_data from the GlyphRequest.
+    pub user_data: T,
 
     /// The codepoint that was rendered.
     pub codepoint: char,
@@ -269,7 +270,8 @@ pub fn latin1() -> impl Clone + Iterator<Item = char> {
 
 /// Returns an iterator of the chars you would want to pass to
 /// [`build`](FontAssetBuilder::build) if you will be using the rendered font to
-/// display ISO-8859-1 ("Latin 1") text with French support.
+/// display ISO-8859-1 ("Latin 1") text with three additional characters for
+/// French support.
 pub fn latin1_french() -> impl Clone + Iterator<Item = char> {
     latin1().chain(['\u{0152}', '\u{0153}', '\u{0178}'])
 }
