@@ -31,7 +31,7 @@ pub fn get_rastered_size(
     face: &Face<'_>,
     ch: char,
 ) -> Result<RasteredSize, char> {
-    let face_height = f32::from(face.height());
+    let face_height = f32::from(face.units_per_em());
     let padding = padding_ratio;
     let rel_from = |font_value: i16| f32::from(font_value) / face_height;
     let glyph_id = face.glyph_index(ch).ok_or(ch)?;
@@ -169,7 +169,7 @@ pub fn raster<T>(
     let glyph_id = face
         .glyph_index(*codepoint)
         .ok_or(crate::Error::MissingGlyph(*codepoint))?;
-    let mut segments = Segments::new(f32::from(face.height()));
+    let mut segments = Segments::new(f32::from(face.units_per_em()));
     face.outline_glyph(glyph_id, &mut segments);
     for dest_y in 0..(item.rect.h - 1) {
         let y = (dest_y as f32 + 0.5) / ((item.rect.h - 1) as f32);

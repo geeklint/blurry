@@ -16,7 +16,7 @@ fn update_font(
     ttf_data: &[u8],
 ) -> Result<Vec<Glyph<AdvanceWidth>>, &'static str> {
     let face = Face::parse(ttf_data, 0).map_err(|_| "failed to parse font file")?;
-    let height = f32::from(face.height());
+    let height = f32::from(face.units_per_em());
     let mut asset = FontAssetBuilder::with_font_size(30.0)
         .with_padding_ratio(PADDING_RATIO)
         .build(latin1().map_while(|codepoint| {
