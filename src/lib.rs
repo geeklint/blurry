@@ -153,12 +153,13 @@ impl FontAssetBuilder {
                 bottom,
                 ..
             } = rastered_size;
-            let tex_left = (item.rect.x as f32) / f32::from(width);
-            let tex_right =
-                (item.rect.x as f32 + f32::from(rastered_size.pixel_width)) / f32::from(width);
-            let tex_bottom = (item.rect.y as f32) / f32::from(height);
-            let tex_top =
-                (item.rect.y as f32 + f32::from(rastered_size.pixel_height)) / f32::from(height);
+            // align texture coordinates to the middle of the spacing texels by adjusting by 0.5
+            let tex_left = (item.rect.x as f32 - 0.5) / f32::from(width);
+            let tex_right = (item.rect.x as f32 + f32::from(rastered_size.pixel_width) + 0.5)
+                / f32::from(width);
+            let tex_bottom = (item.rect.y as f32 - 0.5) / f32::from(height);
+            let tex_top = (item.rect.y as f32 + f32::from(rastered_size.pixel_height) + 0.5)
+                / f32::from(height);
             meta.push(Glyph {
                 user_data: request.user_data,
                 codepoint: request.codepoint,

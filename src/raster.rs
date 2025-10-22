@@ -171,11 +171,20 @@ pub fn raster<T>(
         .ok_or(crate::Error::MissingGlyph(*codepoint))?;
     let mut segments = Segments::new(f32::from(face.units_per_em()));
     face.outline_glyph(glyph_id, &mut segments);
-    for dest_y in 0..(item.rect.h - 1) {
-        let y = (dest_y as f32 + 0.5) / ((item.rect.h - 1) as f32);
+    // glyphs must be separated by a pixel of zero, so the area we mutate is
+    // reduced by 1 in each dimension
+    let positive_width = item.rect.w - 1;
+    let positive_height = item.rect.h - 1;
+    for dest_y in 0..positive_height {
+        // this math is subtle, the edge of the glyph is in the middle of the
+        // zero (spacing) texels (the glyph rect expands outside the rect
+        // defined by positive_width/height by half a texel in all cardinal
+        // directions), so the total size is increased by 1, and the middle of
+        // the texels we are mutating are at integer offsets.
+        let y = (dest_y as f32) / (positive_height as f32 + 1.0);
         let dest_y = dest_y + item.rect.y;
-        for dest_x in 0..(item.rect.w - 1) {
-            let x = (dest_x as f32 + 0.5) / ((item.rect.w - 1) as f32);
+        for dest_x in 0..positive_width {
+            let x = (dest_x as f32) / (positive_width as f32 + 1.0);
             let dest_x = dest_x + item.rect.x;
             let (x, y) = if rotate { (y, x) } else { (x, y) };
             let x = rastered_size.left + (x * (rastered_size.right - rastered_size.left));
