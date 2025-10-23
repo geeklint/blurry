@@ -180,11 +180,13 @@ pub fn raster<T>(
         // zero (spacing) texels (the glyph rect expands outside the rect
         // defined by positive_width/height by half a texel in all cardinal
         // directions), so the total size is increased by 1, and the middle of
-        // the texels we are mutating are at integer offsets.
-        let y = (dest_y as f32) / (positive_height as f32 + 1.0);
+        // the texels we are mutating are at integer offsets. But the first
+        // texel we are mutating isn't position zero, that's the spacing texel;
+        // the first one we are mutating is actually at offset 1.
+        let y = (dest_y as f32 + 1.0) / (positive_height as f32 + 1.0);
         let dest_y = dest_y + item.rect.y;
         for dest_x in 0..positive_width {
-            let x = (dest_x as f32) / (positive_width as f32 + 1.0);
+            let x = (dest_x as f32 + 1.0) / (positive_width as f32 + 1.0);
             let dest_x = dest_x + item.rect.x;
             let (x, y) = if rotate { (y, x) } else { (x, y) };
             let x = rastered_size.left + (x * (rastered_size.right - rastered_size.left));
