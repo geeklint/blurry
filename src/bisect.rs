@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: (Apache-2.0 OR MIT OR Zlib) */
 /* Copyright © 2023 Violet Leonard */
 
-use crate::{GlyphRequest, PackResult};
+use crate::{PackResult, ShapeRequest};
 
 pub struct BisectArgs<T> {
     pub lower_bound: T,
@@ -9,7 +9,7 @@ pub struct BisectArgs<T> {
     pub attempts: u32,
 }
 
-pub fn bisect_font_size<'a, T, I>(
+pub fn bisect_scale<'a, T, I>(
     asset_width: u16,
     asset_height: u16,
     padding_ratio: f32,
@@ -19,7 +19,7 @@ pub fn bisect_font_size<'a, T, I>(
 ) -> Result<(f32, PackResult<'a, T>), crate::Error>
 where
     T: Clone,
-    I: 'a + Clone + Iterator<Item = GlyphRequest<'a, T>>,
+    I: 'a + Clone + Iterator<Item = ShapeRequest<'a, char, T>>,
 {
     let rot = if allow_rotate {
         crunch::Rotation::Allowed
@@ -38,15 +38,13 @@ where
         let check_size = (lower_bound + too_big) / 2.0;
         let mut missing_glyph = Ok(());
         let rects = glyphs.clone().map_while(|req| {
-            let rastered_size = match crate::raster::get_rastered_size(
-                padding_ratio,
-                check_size,
-                req.face,
-                req.codepoint,
-            ) {
+            let rastered_size = match req
+                .shape
+                .to_rastered_size(req.id, padding_ratio, check_size)
+            {
                 Ok(sz) => sz,
-                Err(ch) => {
-                    missing_glyph = Err(crate::Error::MissingGlyph(ch));
+                err => {
+                    missing_glyph = err.map(|_| ());
                     return None;
                 }
             };
@@ -81,32 +79,27 @@ where
 }
 
 pub fn bisect_asset_size<'a, T, I>(
-    font_size: f32,
+    scale: f32,
     padding_ratio: f32,
     allow_rotate: bool,
     glyphs: &I,
 ) -> Result<(u16, PackResult<'a, T>), crate::Error>
 where
     T: Clone,
-    I: 'a + Clone + Iterator<Item = GlyphRequest<'a, T>>,
+    I: 'a + Clone + Iterator<Item = ShapeRequest<'a, char, T>>,
 {
     let rot = if allow_rotate {
         crunch::Rotation::Allowed
     } else {
         crunch::Rotation::None
     };
-    let mut too_small = (font_size.floor().clamp(2.0, u16::MAX.into()) as u16) - 1;
+    let mut too_small = (scale.floor().clamp(2.0, u16::MAX.into()) as u16) - 1;
     let missing_glyph = std::cell::Cell::new(Ok(()));
-    let mut map_glyphs = |req: GlyphRequest<'a, T>| {
-        let rastered_size = match crate::raster::get_rastered_size(
-            padding_ratio,
-            font_size,
-            req.face,
-            req.codepoint,
-        ) {
+    let mut map_glyphs = |req: ShapeRequest<'a, char, T>| {
+        let rastered_size = match req.shape.to_rastered_size(req.id, padding_ratio, scale) {
             Ok(sz) => sz,
-            Err(ch) => {
-                missing_glyph.set(Err(crate::Error::MissingGlyph(ch)));
+            err => {
+                missing_glyph.set(err.map(|_| ()));
                 return None;
             }
         };

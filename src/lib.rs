@@ -10,6 +10,7 @@ pub extern crate ttf_parser;
 
 mod bisect;
 mod edge;
+mod font;
 mod math;
 mod raster;
 
@@ -102,7 +103,7 @@ impl FontAssetBuilder {
     pub fn build<'a, T, I>(self, glyphs: I) -> Result<SdfFontAsset<T>, Error>
     where
         T: Clone,
-        I: 'a + Clone + Iterator<Item = GlyphRequest<'a, T>>,
+        I: 'a + Clone + Iterator<Item = ShapeRequest<'a, char, T>>,
     {
         let (width, height, packing);
         match self.size {
@@ -116,7 +117,7 @@ impl FontAssetBuilder {
             AssetSize::TextureSize(w, h) => {
                 width = w;
                 height = h;
-                packing = bisect::bisect_font_size(
+                packing = bisect::bisect_scale(
                     width,
                     height,
                     self.padding,
@@ -162,7 +163,7 @@ impl FontAssetBuilder {
                 / f32::from(height);
             meta.push(Glyph {
                 user_data: request.user_data,
-                codepoint: request.codepoint,
+                codepoint: request.id,
                 rotated,
                 left,
                 right,
@@ -183,17 +184,38 @@ impl FontAssetBuilder {
     }
 }
 
-/// A request for a glyph to be rendered.
+/// A request for a shape to be rendered.
 #[derive(Clone, Copy, Debug)]
-pub struct GlyphRequest<'a, T> {
-    /// Some data you can use to associate a rendered Glyph to the submitted GlyphRequest.
-    pub user_data: T,
+pub struct ShapeRequest<'a, Id = char, UserData = ()> {
+    /// Some data you can use to associate a rendered Glyph to the submitted ShapeRequest.
+    pub user_data: UserData,
+    id: Id,
+    shape: &'a dyn raster::Shape<Id>,
+}
 
-    /// The font face to render the glyph from.
-    pub face: &'a Face<'a>,
+impl<'a> ShapeRequest<'a, char, ()> {
+    /// Create a new ShapeRequest from a font face and unicode codepoint.
+    pub fn glyph(face: &'a Face<'_>, codepoint: char) -> Self {
+        Self {
+            user_data: (),
+            id: codepoint,
+            shape: face,
+        }
+    }
+}
 
-    /// The codepoint of the glyph.
-    pub codepoint: char,
+impl<'a, Id, Old> ShapeRequest<'a, Id, Old> {
+    /// Replace the user data associated with this ShapeRequest.
+    pub fn with_user_data<NewUserData>(
+        self,
+        data: NewUserData,
+    ) -> ShapeRequest<'a, Id, NewUserData> {
+        ShapeRequest {
+            user_data: data,
+            id: self.id,
+            shape: self.shape,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -277,4 +299,4 @@ pub fn latin1_french() -> impl Clone + Iterator<Item = char> {
     latin1().chain(['\u{0152}', '\u{0153}', '\u{0178}'])
 }
 
-type PackResult<'a, T> = Vec<crunch::PackedItem<Box<(GlyphRequest<'a, T>, RasteredSize)>>>;
+type PackResult<'a, T> = Vec<crunch::PackedItem<Box<(ShapeRequest<'a, char, T>, RasteredSize)>>>;

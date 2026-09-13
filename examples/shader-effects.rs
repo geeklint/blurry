@@ -2,7 +2,7 @@ use std::fmt::Write;
 
 use glow::HasContext;
 
-use blurry::{latin1, ttf_parser::Face, FontAssetBuilder, Glyph, GlyphRequest};
+use blurry::{latin1, ttf_parser::Face, FontAssetBuilder, Glyph, ShapeRequest};
 
 static DISPLAY_FONT_SIZE: f32 = 30.0;
 const PADDING_RATIO: f32 = 0.3;
@@ -25,11 +25,10 @@ fn update_font(
                 .and_then(|glyph_id| face.glyph_hor_advance(glyph_id))
                 .unwrap_or(0)
                 .into();
-            Some(GlyphRequest {
-                user_data: AdvanceWidth(advance_width / height),
-                face: &face,
-                codepoint,
-            })
+            Some(
+                ShapeRequest::glyph(&face, codepoint)
+                    .with_user_data(AdvanceWidth(advance_width / height)),
+            )
         }))
         .map_err(|err| match err {
             blurry::Error::MissingGlyph(_) => "the font file didn't contain all the characters",

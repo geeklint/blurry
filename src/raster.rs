@@ -1,12 +1,14 @@
 /* SPDX-License-Identifier: (Apache-2.0 OR MIT OR Zlib) */
 /* Copyright © 2023 Violet Leonard */
 
-use ttf_parser::Face;
+use std::fmt::Debug;
 
 use crate::{
-    edge::{CubicCurve, EdgeBoundingBox, Line, QuadCurve, Segment},
-    GlyphRequest,
+    edge::{EdgeBoundingBox, Segment},
+    ShapeRequest,
 };
+
+pub type Segments = Vec<(crate::edge::Segment, EdgeBoundingBox)>;
 
 #[derive(Clone, Copy, Debug)]
 pub struct RasteredSize {
@@ -25,121 +27,14 @@ pub struct RasteredSize {
     pub bottom: f32,
 }
 
-pub fn get_rastered_size(
-    padding_ratio: f32,
-    font_size: f32,
-    face: &Face<'_>,
-    ch: char,
-) -> Result<RasteredSize, char> {
-    let face_height = f32::from(face.units_per_em());
-    let padding = padding_ratio;
-    let rel_from = |font_value: i16| f32::from(font_value) / face_height;
-    let glyph_id = face.glyph_index(ch).ok_or(ch)?;
-    let bbox = face.glyph_bounding_box(glyph_id).ok_or(ch)?;
-    let width = rel_from(bbox.width()) + (2.0 * padding);
-    let height = rel_from(bbox.height()) + (2.0 * padding);
-    let pixel_width = (width * font_size).round().clamp(0.0, u16::MAX.into()) as u16;
-    let pixel_height = (height * font_size).round().clamp(0.0, u16::MAX.into()) as u16;
-    let left = rel_from(bbox.x_min) - padding;
-    let right = rel_from(bbox.x_max) + padding;
-    let top = rel_from(bbox.y_max) + padding;
-    let bottom = rel_from(bbox.y_min) - padding;
-    Ok(RasteredSize {
-        pixel_width,
-        pixel_height,
-        left,
-        right,
-        top,
-        bottom,
-    })
-}
-
-pub struct Segments {
-    face_height: f32,
-    segments: Vec<(crate::edge::Segment, EdgeBoundingBox)>,
-    curve_start: usize,
-    cursor_x: f32,
-    cursor_y: f32,
-}
-
-impl Segments {
-    fn new(face_height: f32) -> Self {
-        Self {
-            face_height,
-            segments: Vec::new(),
-            curve_start: usize::MAX,
-            cursor_x: 0.0,
-            cursor_y: 0.0,
-        }
-    }
-}
-
-impl ttf_parser::OutlineBuilder for Segments {
-    fn move_to(&mut self, x: f32, y: f32) {
-        self.cursor_x = x / self.face_height;
-        self.cursor_y = y / self.face_height;
-        let segment = Segment::LoopPoint(0.0, 0.0);
-        let bbox = EdgeBoundingBox {
-            left: x,
-            right: x,
-            bottom: y,
-            top: y,
-        };
-        self.curve_start = self.segments.len();
-        self.segments.push((segment, bbox));
-    }
-
-    fn line_to(&mut self, x: f32, y: f32) {
-        let x = x / self.face_height;
-        let y = y / self.face_height;
-        let segment: Segment = Line::new((self.cursor_x, self.cursor_y), (x, y)).into();
-        let bbox = segment.bbox();
-        self.segments.push((segment, bbox));
-        self.cursor_x = x;
-        self.cursor_y = y;
-    }
-
-    fn quad_to(&mut self, x1: f32, y1: f32, x: f32, y: f32) {
-        let x1 = x1 / self.face_height;
-        let y1 = y1 / self.face_height;
-        let x = x / self.face_height;
-        let y = y / self.face_height;
-        let segment: Segment =
-            QuadCurve::new((self.cursor_x, self.cursor_y), (x1, y1), (x, y)).into();
-        let bbox = segment.bbox();
-        self.segments.push((segment, bbox));
-        self.cursor_x = x;
-        self.cursor_y = y;
-    }
-
-    fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x: f32, y: f32) {
-        let x1 = x1 / self.face_height;
-        let y1 = y1 / self.face_height;
-        let x2 = x2 / self.face_height;
-        let y2 = y2 / self.face_height;
-        let x = x / self.face_height;
-        let y = y / self.face_height;
-        let segment: Segment =
-            CubicCurve::new((self.cursor_x, self.cursor_y), (x1, y1), (x2, y2), (x, y)).into();
-        let bbox = segment.bbox();
-        self.segments.push((segment, bbox));
-        self.cursor_x = x;
-        self.cursor_y = y;
-    }
-
-    fn close(&mut self) {
-        let (end_dx, end_dy) = self.segments.last().unwrap().0.direction(1.0);
-        let (start_dx, start_dy) = self.segments[self.curve_start + 1].0.direction(0.0);
-        self.segments[self.curve_start].0 = Segment::LoopPoint(end_dx, end_dy);
-        let end_segment = Segment::LoopPoint(start_dx, start_dy);
-        let end_bbox = EdgeBoundingBox {
-            left: self.cursor_x,
-            right: self.cursor_x,
-            top: self.cursor_y,
-            bottom: self.cursor_y,
-        };
-        self.segments.push((end_segment, end_bbox));
-    }
+pub(crate) trait Shape<ID>: Debug {
+    fn to_rastered_size(
+        &self,
+        id: ID,
+        padding_ratio: f32,
+        scale: f32,
+    ) -> Result<RasteredSize, crate::Error>;
+    fn to_segments(&self, id: ID) -> Result<Segments, crate::Error>;
 }
 
 pub struct Buffer<'a> {
@@ -157,20 +52,11 @@ impl<'a> Buffer<'a> {
 pub fn raster<T>(
     mut buffer: Buffer<'_>,
     padding: f32,
-    item: &crunch::PackedItem<Box<(GlyphRequest<'_, T>, RasteredSize)>>,
+    item: &crunch::PackedItem<Box<(ShapeRequest<'_, char, T>, RasteredSize)>>,
 ) -> Result<(), crate::Error> {
-    let (
-        GlyphRequest {
-            face, codepoint, ..
-        },
-        rastered_size,
-    ) = &*item.data;
+    let (request, rastered_size) = &*item.data;
     let rotate = (item.rect.w - 1) != rastered_size.pixel_width.into();
-    let glyph_id = face
-        .glyph_index(*codepoint)
-        .ok_or(crate::Error::MissingGlyph(*codepoint))?;
-    let mut segments = Segments::new(f32::from(face.units_per_em()));
-    face.outline_glyph(glyph_id, &mut segments);
+    let segments = request.shape.to_segments(request.id)?;
     // glyphs must be separated by a pixel of zero, so the area we mutate is
     // reduced by 1 in each dimension
     let positive_width = item.rect.w - 1;
@@ -202,7 +88,7 @@ pub fn raster<T>(
                 f32::INFINITY
             };
             // first pass, skip anything that requires newton's method
-            for (i, (segment, seg_bbox)) in segments.segments.iter().enumerate() {
+            for (i, (segment, seg_bbox)) in segments.iter().enumerate() {
                 match segment {
                     Segment::LoopPoint(_, _) => continue,
                     Segment::Line(_) => {
@@ -239,7 +125,7 @@ pub fn raster<T>(
                 }
             }
             // second pass, skip anything farther than what the first pass found
-            for (i, (segment, seg_bbox)) in segments.segments.iter().enumerate() {
+            for (i, (segment, seg_bbox)) in segments.iter().enumerate() {
                 if matches!(segment, Segment::LoopPoint(_, _)) {
                     continue;
                 }
@@ -258,20 +144,16 @@ pub fn raster<T>(
                 }
             }
             if let Some((i, t, cx, cy)) = nearest {
-                let (dx, dy) = segments.segments[i].0.direction(t);
+                let (dx, dy) = segments[i].0.direction(t);
                 let (dx, dy) = if t == 0.0 {
-                    let other_seg = if i == 0 {
-                        segments.segments.len() - 1
-                    } else {
-                        i - 1
-                    };
-                    let (odx, ody) = segments.segments[other_seg].0.direction(1.0);
+                    let other_seg = if i == 0 { segments.len() - 1 } else { i - 1 };
+                    let (odx, ody) = segments[other_seg].0.direction(1.0);
                     let dlen = (dx.powi(2) + dy.powi(2)).sqrt();
                     let odlen = (odx.powi(2) + ody.powi(2)).sqrt();
                     ((dx / dlen + odx / odlen), (dy / dlen + ody / odlen))
                 } else if t == 1.0 {
-                    let other_seg = (i + 1) % segments.segments.len();
-                    let (odx, ody) = segments.segments[other_seg].0.direction(0.0);
+                    let other_seg = (i + 1) % segments.len();
+                    let (odx, ody) = segments[other_seg].0.direction(0.0);
                     let dlen = (dx.powi(2) + dy.powi(2)).sqrt();
                     let odlen = (odx.powi(2) + ody.powi(2)).sqrt();
                     ((dx / dlen + odx / odlen), (dy / dlen + ody / odlen))

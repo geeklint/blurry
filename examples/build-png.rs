@@ -1,17 +1,13 @@
 use std::{fs::File, path::Path};
 
-use blurry::{FontAssetBuilder, Glyph, GlyphRequest};
+use blurry::{FontAssetBuilder, Glyph, ShapeRequest};
 
 static FONT_DATA: &[u8] = include_bytes!("roboto/Roboto-Regular.ttf");
 
 fn main() {
     let face = ttf_parser::Face::parse(FONT_DATA, 0).unwrap();
     let asset = FontAssetBuilder::with_texture_size(255, 255)
-        .build(blurry::latin1().map(|codepoint| GlyphRequest {
-            user_data: (),
-            face: &face,
-            codepoint,
-        }))
+        .build(blurry::latin1().map(|codepoint| ShapeRequest::glyph(&face, codepoint)))
         .unwrap();
     let mut output_path = Path::new(file!()).parent().unwrap().to_path_buf();
     output_path.push("demo-sdf.png");
