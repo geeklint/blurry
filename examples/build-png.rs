@@ -1,6 +1,6 @@
 use std::{fs::File, path::Path};
 
-use blurry::{FontAssetBuilder, Glyph, ShapeRequest};
+use blurry::{FontAssetBuilder, Shape, ShapeRequest};
 
 static FONT_DATA: &[u8] = include_bytes!("roboto/Roboto-Regular.ttf");
 
@@ -20,7 +20,7 @@ fn main() {
         .unwrap()
         .write_image_data(&asset.data)
         .unwrap();
-    for Glyph {
+    for Shape {
         codepoint,
         tex_left,
         tex_bottom,

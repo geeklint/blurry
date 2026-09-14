@@ -39,8 +39,8 @@ pub struct SdfFontAsset<T> {
     /// The raw image data
     pub data: Vec<u8>,
 
-    /// A list of metadata for the rendered glyphs
-    pub metadata: Vec<Glyph<T>>,
+    /// A list of metadata for the rendered shapes
+    pub metadata: Vec<Shape<T>>,
 }
 
 /// Possible errors that can happen while generating the image
@@ -52,15 +52,15 @@ pub enum Error {
     /// from the font file.
     MissingGlyph(char),
 
-    /// This error occurs if too large a font size
-    /// is specified to neatly pack the requested glyphs
+    /// This error occurs if too large a scale
+    /// is specified to neatly pack the requested shapes
     /// in a single texture
     PackingAtlasFailed,
 }
 
 impl FontAssetBuilder {
     /// Define the size of the resulting asset by specifying the image
-    /// dimensions.  The size of glyphs will be adjusted to fit inside.
+    /// dimensions.  The size of shapes will be scaled to fit inside.
     pub fn with_texture_size(width: u16, height: u16) -> Self {
         assert!(width >= 2 && height >= 2);
         Self {
@@ -71,45 +71,45 @@ impl FontAssetBuilder {
     }
 
     /// Define the size of the resulting asset by specifying the desired final
-    /// font size.  The dimensions of the image will be chosen to fit all glyphs
-    /// at the provided size.
-    pub fn with_font_size(font_size: f32) -> Self {
-        assert!(font_size > 0.0);
+    /// scale.  For fonts, scale refers to the font size. The dimensions of the
+    /// image will be chosen to fit all shapes at the provided size.
+    pub fn with_scale(scale: f32) -> Self {
+        assert!(scale > 0.0);
         Self {
-            size: AssetSize::FontSize(font_size),
+            size: AssetSize::Scale(scale),
             padding: 0.1,
             allow_rotate: false,
         }
     }
 
-    /// Define the ratio of the distance field to the size of the glyph.  For
-    /// example, a 16px glyph with a padding ratio of 0.25 render such that the
+    /// Define the ratio of the distance field to the size of the shape.  For
+    /// example, a 16px shape with a padding ratio of 0.25 render such that the
     /// signed distance field measures -4 to +4 pixels.
     pub fn with_padding_ratio(self, padding: f32) -> Self {
         Self { padding, ..self }
     }
 
-    /// Use this to allow rotating glyphs, which may make the atlas packing more
+    /// Use this to allow rotating shapes, which may make the atlas packing more
     /// optimal but requires more attention when decoding the resulting texture
     /// coordinates.
-    pub fn allow_rotating_glyphs(self) -> Self {
+    pub fn allow_rotating_shapes(self) -> Self {
         Self {
             allow_rotate: true,
             ..self
         }
     }
 
-    /// Build a SDF font asset given a set of glyphs to include.
-    pub fn build<'a, T, I>(self, glyphs: I) -> Result<SdfFontAsset<T>, Error>
+    /// Build a SDF font asset given a set of shapes to include.
+    pub fn build<'a, T, I>(self, shapes: I) -> Result<SdfFontAsset<T>, Error>
     where
         T: Clone,
         I: 'a + Clone + Iterator<Item = ShapeRequest<'a, char, T>>,
     {
         let (width, height, packing);
         match self.size {
-            AssetSize::FontSize(font_size) => {
+            AssetSize::Scale(scale) => {
                 let (dim, packresult) =
-                    bisect::bisect_asset_size(font_size, self.padding, self.allow_rotate, &glyphs)?;
+                    bisect::bisect_asset_size(scale, self.padding, self.allow_rotate, &shapes)?;
                 width = dim;
                 height = dim;
                 packing = packresult;
@@ -127,7 +127,7 @@ impl FontAssetBuilder {
                         too_big: 8.0 * (height as f32),
                         attempts: 11,
                     },
-                    &glyphs,
+                    &shapes,
                 )?
                 .1;
             }
@@ -161,7 +161,7 @@ impl FontAssetBuilder {
             let tex_bottom = (item.rect.y as f32 - 0.5) / f32::from(height);
             let tex_top = (item.rect.y as f32 + f32::from(rastered_size.pixel_height) + 0.5)
                 / f32::from(height);
-            meta.push(Glyph {
+            meta.push(Shape {
                 user_data: request.user_data,
                 codepoint: request.id,
                 rotated,
@@ -187,7 +187,7 @@ impl FontAssetBuilder {
 /// A request for a shape to be rendered.
 #[derive(Clone, Copy, Debug)]
 pub struct ShapeRequest<'a, Id = char, UserData = ()> {
-    /// Some data you can use to associate a rendered Glyph to the submitted ShapeRequest.
+    /// Some data you can use to associate a rendered Shape to the submitted ShapeRequest.
     pub user_data: UserData,
     id: Id,
     shape: &'a dyn raster::Shape<Id>,
@@ -220,53 +220,53 @@ impl<'a, Id, Old> ShapeRequest<'a, Id, Old> {
 
 #[derive(Clone, Copy, Debug)]
 enum AssetSize {
-    FontSize(f32),
+    Scale(f32),
     TextureSize(u16, u16),
 }
 
-/// Metadata for a glyph that was rendered in an asset.
+/// Metadata for a shape that was rendered in an asset.
 #[derive(Clone, Copy, Debug)]
 #[non_exhaustive]
-pub struct Glyph<T> {
-    /// The user_data from the GlyphRequest.
+pub struct Shape<T> {
+    /// The user_data from the ShapeRequest.
     pub user_data: T,
 
     /// The codepoint that was rendered.
     pub codepoint: char,
 
-    /// Whether rotation was applied when this glyph was packed.
+    /// Whether rotation was applied when this shape was packed.
     pub rotated: bool,
 
-    /// The relative left edge of a bounding box from the glyph's 0 position
+    /// The relative left edge of a bounding box from the shape's 0 position
     /// that will position the resulting SDF so that the middle distance
     /// describes a character as specified by the font.
     pub left: f32,
 
-    /// The relative right edge of a bounding box from the glyph's 0 position
+    /// The relative right edge of a bounding box from the shape's 0 position
     /// that will position the resulting SDF so that the middle distance
     /// describes a character as specified by the font.
     pub right: f32,
 
-    /// The relative bottom edge of a bounding box from the glyph's 0 position
+    /// The relative bottom edge of a bounding box from the shape's 0 position
     /// that will position the resulting SDF so that the middle distance
     /// describes a character as specified by the font.
     pub bottom: f32,
 
-    /// The relative top edge of a bounding box from the glyph's 0 position
+    /// The relative top edge of a bounding box from the shape's 0 position
     /// that will position the resulting SDF so that the middle distance
     /// describes a character as specified by the font.
     pub top: f32,
 
-    /// The left edge of the rendered glyph as a texture coordinate
+    /// The left edge of the rendered shape as a texture coordinate
     pub tex_left: f32,
 
-    /// The right edge of the rendered glyph as a texture coordinate
+    /// The right edge of the rendered shape as a texture coordinate
     pub tex_right: f32,
 
-    /// The top edge of the rendered glyph as a texture coordinate
+    /// The top edge of the rendered shape as a texture coordinate
     pub tex_top: f32,
 
-    /// The bottom edge of the rendered glyph as a texture coordinate
+    /// The bottom edge of the rendered shape as a texture coordinate
     pub tex_bottom: f32,
 }
 

@@ -2,7 +2,7 @@ use std::fmt::Write;
 
 use glow::HasContext;
 
-use blurry::{latin1, ttf_parser::Face, FontAssetBuilder, Glyph, ShapeRequest};
+use blurry::{latin1, ttf_parser::Face, FontAssetBuilder, Shape, ShapeRequest};
 
 static DISPLAY_FONT_SIZE: f32 = 30.0;
 const PADDING_RATIO: f32 = 0.3;
@@ -14,10 +14,10 @@ fn update_font(
     gl: &glow::Context,
     texture: glow::Texture,
     ttf_data: &[u8],
-) -> Result<Vec<Glyph<AdvanceWidth>>, &'static str> {
+) -> Result<Vec<Shape<AdvanceWidth>>, &'static str> {
     let face = Face::parse(ttf_data, 0).map_err(|_| "failed to parse font file")?;
     let height = f32::from(face.units_per_em());
-    let mut asset = FontAssetBuilder::with_font_size(30.0)
+    let mut asset = FontAssetBuilder::with_scale(30.0)
         .with_padding_ratio(PADDING_RATIO)
         .build(latin1().map_while(|codepoint| {
             let advance_width: f32 = face
@@ -388,7 +388,7 @@ fn push_glyph(
     offset_y: f32,
     font_mul_x: f32,
     font_mul_y: f32,
-    glyph: &Glyph<AdvanceWidth>,
+    glyph: &Shape<AdvanceWidth>,
 ) {
     // first triangle
     data.push([
