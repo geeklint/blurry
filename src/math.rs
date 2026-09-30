@@ -153,6 +153,40 @@ impl<const N: usize> std::ops::Sub for Polynomial<N> {
     }
 }
 
+impl<const N: usize> std::ops::Add<f32> for Polynomial<N> {
+    type Output = Polynomial<N>;
+
+    fn add(self, rhs: f32) -> Self::Output {
+        let mut coeffs = self.coeffs;
+        coeffs[N - 1] += rhs;
+        Polynomial { coeffs }
+    }
+}
+
+impl<const N: usize> std::ops::Sub<f32> for Polynomial<N> {
+    type Output = Polynomial<N>;
+
+    fn sub(self, rhs: f32) -> Self::Output {
+        let mut coeffs = self.coeffs;
+        coeffs[N - 1] -= rhs;
+        Polynomial { coeffs }
+    }
+}
+
+impl<const N: usize> std::ops::Mul<f32> for Polynomial<N> {
+    type Output = Polynomial<N>;
+
+    fn mul(self, rhs: f32) -> Self::Output {
+        let mut coeffs = [0.0; N];
+        let mut i = 0;
+        while i < N {
+            coeffs[i] = self.coeffs[i] * rhs;
+            i += 1;
+        }
+        Polynomial { coeffs }
+    }
+}
+
 impl Polynomial<3> {
     pub fn pow2(self) -> Polynomial<5> {
         let [a, b, c] = self.coeffs;

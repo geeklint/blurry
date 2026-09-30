@@ -5,6 +5,7 @@ use crate::math::Polynomial;
 
 const NEWTONS_ITERS: u8 = 4;
 
+#[derive(Clone, Debug)]
 pub enum Segment {
     LoopPoint(f32, f32),
     Line(Line),
@@ -48,6 +49,15 @@ impl Segment {
             Self::Cubic(curve) => curve.bbox(),
         }
     }
+
+    pub fn intersect_ray<'a>(&self, slope: f32, y: f32, buffer: &'a mut [f32]) -> &'a [f32] {
+        match self {
+            Self::LoopPoint(_, _) => &[],
+            Self::Line(line) => line.intersect_ray(slope, y, buffer),
+            Self::Quad(quad) => quad.intersect_ray(slope, y, buffer),
+            Self::Cubic(curve) => curve.intersect_ray(slope, y, buffer),
+        }
+    }
 }
 
 impl From<Line> for Segment {
@@ -68,6 +78,7 @@ impl From<CubicCurve> for Segment {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct EdgeBoundingBox {
     pub left: f32,
     pub right: f32,
@@ -80,8 +91,10 @@ pub trait Edge {
     fn nearest_t(&self, point: (f32, f32)) -> f32;
     fn direction(&self, t: f32) -> (f32, f32);
     fn bbox(&self) -> EdgeBoundingBox;
+    fn intersect_ray<'a>(&self, slope: f32, y: f32, buffer: &'a mut [f32]) -> &'a [f32];
 }
 
+#[derive(Clone, Debug)]
 pub struct Line {
     start: (f32, f32),
     end: (f32, f32),
@@ -112,7 +125,7 @@ impl Edge for Line {
         let t = -vu / vv;
         let start = (ux * ux) + (uy * uy);
         let end = (wx * wx) + (wy * wy);
-        if (0.0..=1.0).contains(&t) {
+        if in01(t) {
             t
         } else if start < end {
             0.0
@@ -133,8 +146,29 @@ impl Edge for Line {
             bottom: self.start.1.min(self.end.1),
         }
     }
+
+    fn intersect_ray<'a>(&self, slope: f32, y: f32, buffer: &'a mut [f32]) -> &'a [f32] {
+        let our_slope = (self.end.1 - self.start.1) / (self.end.0 - self.start.0);
+        if our_slope.is_infinite() {
+            let ray_y = self.start.0 * slope + y;
+            let len = self.end.1 - self.start.1;
+            buffer[0] = (ray_y - self.start.1) / len;
+        } else {
+            let our_y = self.start.1 - (our_slope * self.start.0);
+            let x = (our_y - y) / (slope - our_slope);
+            if x.is_infinite() {
+                // slopes are the same - no intersection
+                return &[];
+            } else {
+                let len = self.end.0 - self.start.0;
+                buffer[0] = (x - self.start.0) / len;
+            }
+        }
+        &buffer[0..=0]
+    }
 }
 
+#[derive(Clone, Debug)]
 pub struct QuadCurve {
     x_poly: Polynomial<3>,
     y_poly: Polynomial<3>,
@@ -186,7 +220,7 @@ impl Edge for QuadCurve {
         let mut test = 0.0;
         while test <= 1.0 {
             let root = dd.newtons_root(test, NEWTONS_ITERS);
-            if (0.0..=1.0).contains(&root) {
+            if in01(root) {
                 let dist_sq = distance_sq.value(root);
                 if dist_sq < best_dist_sq {
                     best_dist_sq = dist_sq;
@@ -220,8 +254,19 @@ impl Edge for QuadCurve {
             bottom: possible_y.into_iter().fold(f32::INFINITY, |a, b| a.min(b)),
         }
     }
+
+    fn intersect_ray<'a>(&self, slope: f32, y: f32, buffer: &'a mut [f32]) -> &'a [f32] {
+        let offset_y_poly = self.y_poly - y;
+        let sloped_x_poly = self.x_poly * slope;
+        let difference = offset_y_poly - sloped_x_poly;
+        let [t0, t1] = difference.roots();
+        buffer[0] = t0;
+        buffer[1] = t1;
+        &buffer[0..=1]
+    }
 }
 
+#[derive(Clone, Debug)]
 pub struct CubicCurve {
     x_poly: Polynomial<4>,
     y_poly: Polynomial<4>,
@@ -280,7 +325,7 @@ impl Edge for CubicCurve {
         let mut test = 0.0;
         while test <= 1.0 {
             let root = dd.newtons_root(test, NEWTONS_ITERS);
-            if (0.0..=1.0).contains(&root) {
+            if in01(root) {
                 let dist_sq = distance_sq.value(root);
                 if dist_sq < best_dist_sq {
                     best_dist_sq = dist_sq;
@@ -312,6 +357,120 @@ impl Edge for CubicCurve {
                 .into_iter()
                 .fold(f32::NEG_INFINITY, |a, b| a.max(b)),
             bottom: possible_y.into_iter().fold(f32::INFINITY, |a, b| a.min(b)),
+        }
+    }
+
+    fn intersect_ray<'a>(&self, slope: f32, y: f32, buffer: &'a mut [f32]) -> &'a [f32] {
+        let offset_y_poly = self.y_poly - y;
+        let sloped_x_poly = self.x_poly * slope;
+        let difference = offset_y_poly - sloped_x_poly;
+        let inflections = difference.derivative().roots();
+        let [left, right] = inflections;
+        let (left, right) = if left < right {
+            (left, right)
+        } else {
+            (right, left)
+        };
+        let mut count = 0;
+        match (in01(left), in01(right)) {
+            (true, true) => {
+                let root = difference.newtons_root(0.0, NEWTONS_ITERS);
+                if root < left {
+                    buffer[count] = root;
+                    count += 1;
+                }
+                let root = difference.newtons_root(left.midpoint(right), NEWTONS_ITERS);
+                if root > left && root < right {
+                    buffer[count] = root;
+                    count += 1;
+                }
+                let root = difference.newtons_root(1.0, NEWTONS_ITERS);
+                if root > right {
+                    buffer[count] = root;
+                    count += 1;
+                }
+            }
+            (false, true) => {
+                let root = difference.newtons_root(0.0, NEWTONS_ITERS);
+                if root < right {
+                    buffer[count] = root;
+                    count += 1;
+                }
+                let root = difference.newtons_root(1.0, NEWTONS_ITERS);
+                if root > right {
+                    buffer[count] = root;
+                    count += 1;
+                }
+            }
+            (true, false) => {
+                let root = difference.newtons_root(0.0, NEWTONS_ITERS);
+                if root < left {
+                    buffer[count] = root;
+                    count += 1;
+                }
+                let root = difference.newtons_root(1.0, NEWTONS_ITERS);
+                if root > left {
+                    buffer[count] = root;
+                    count += 1;
+                }
+            }
+            (false, false) => {
+                buffer[count] = difference.newtons_root(0.5, NEWTONS_ITERS);
+                count += 1;
+            }
+        }
+        &buffer[..count]
+    }
+}
+
+fn in01(value: f32) -> bool {
+    (0.0..=1.0).contains(&value)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_roots() {
+        let quad = Polynomial {
+            coeffs: [2.0, 0.0, 0.0],
+        };
+        let roots = quad.roots();
+        assert_eq!(roots, [0.0, 0.0]);
+    }
+
+    #[test]
+    fn test_line_intersect() {
+        let line = Line {
+            start: (0.0, 1.0),
+            end: (1.0, 0.0),
+        };
+        let mut buffer = [0.0; 3];
+        let answer = line.intersect_ray(1.0, 0.0, &mut buffer);
+        assert_eq!(answer, [0.5]);
+    }
+
+    #[test]
+    fn test_quad_intersect() {
+        let quad = QuadCurve::new((-1.0, 0.0), (0.0, 1.0), (1.0, 0.0));
+        let mut buffer = [0.0; 3];
+        let answer = quad.intersect_ray(1.0, 0.0, &mut buffer);
+        for &t in answer {
+            let (x, y) = quad.point(t);
+            assert!((x - y).abs() < f32::EPSILON);
+        }
+    }
+
+    #[test]
+    fn test_cubic_intersect() {
+        let cubic = CubicCurve::new((-1.0, -1.0), (-1.0, 2.0), (1.0, -2.0), (1.0, 1.0));
+        let mut buffer = [0.0; 3];
+        let answer = cubic.intersect_ray(1.0, 0.0, &mut buffer);
+        assert_eq!(answer.len(), 3);
+        for &t in answer {
+            let (x, y) = cubic.point(t);
+            assert!((x - y).abs() < f32::EPSILON);
         }
     }
 }
