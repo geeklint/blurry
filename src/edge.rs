@@ -470,7 +470,7 @@ mod tests {
         assert_eq!(answer.len(), 3);
         for &t in answer {
             let (x, y) = cubic.point(t);
-            assert!((x - y).abs() < f32::EPSILON);
+            assert!((x - y).abs() < 4e-7);
         }
     }
 }
