@@ -199,6 +199,22 @@ impl Polynomial<3> {
         ];
         Polynomial { coeffs }
     }
+
+    pub fn split_within01(&self, t: f32) -> [Self; 2] {
+        let [a, b, c] = self.coeffs;
+        let first_half = [a * t * t, b * t, c];
+        let second_half = [
+            a * t * t - 2.0 * a * t + a,
+            -2.0 * a * t * t + 2.0 * a * t - b * t + b,
+            a * t * t + b * t + c,
+        ];
+        [
+            Self { coeffs: first_half },
+            Self {
+                coeffs: second_half,
+            },
+        ]
+    }
 }
 
 impl Polynomial<4> {
@@ -214,5 +230,36 @@ impl Polynomial<4> {
             d * d,
         ];
         Polynomial { coeffs }
+    }
+
+    pub fn split_within01(&self, t: f32) -> [Self; 2] {
+        let [a, b, c, d] = self.coeffs;
+        let first_half = [a * t * t * t, b * t * t, c * t, d];
+        let second_half = [
+            -a * t * t * t + 3.0 * a * t * t - 3.0 * a * t + a,
+            3.0 * a * t * t * t - 6.0 * a * t * t + 3.0 * a * t + b * t * t - 2.0 * b * t + b,
+            -3.0 * a * t * t * t + 3.0 * a * t * t - 2.0 * b * t * t + 2.0 * b * t - c * t + c,
+            a * t * t * t + b * t * t + c * t + d,
+        ];
+        [
+            Self { coeffs: first_half },
+            Self {
+                coeffs: second_half,
+            },
+        ]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cubic_split() {
+        let original = Polynomial {
+            coeffs: [1.0, 2.0, -3.0, 4.0],
+        };
+        dbg!(original.split_within01(0.5));
+        assert!(false);
     }
 }
