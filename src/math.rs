@@ -259,7 +259,12 @@ mod tests {
         let original = Polynomial {
             coeffs: [1.0, 2.0, -3.0, 4.0],
         };
-        dbg!(original.split_within01(0.5));
-        assert!(false);
+        let [left, right] = original.split_within01(0.5);
+        assert_eq!(left.value(0.0), original.value(0.0));
+        assert_eq!(left.value(0.5), original.value(0.25));
+        assert_eq!(left.value(1.0), original.value(0.5));
+        assert_eq!(right.value(0.0), original.value(0.5));
+        assert_eq!(right.value(0.5), original.value(0.75));
+        assert_eq!(right.value(1.0), original.value(1.0));
     }
 }
