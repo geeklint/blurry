@@ -58,6 +58,15 @@ impl Segment {
             Self::Cubic(curve) => curve.intersect_ray(slope, y, buffer),
         }
     }
+
+    pub fn split(&self, at: f32) -> [Self; 2] {
+        match self {
+            Self::LoopPoint(_, _) => unreachable!(),
+            Self::Line(line) => line.split(at).map(Self::Line),
+            Self::Quad(quad) => quad.split(at).map(Self::Quad),
+            Self::Cubic(curve) => curve.split(at).map(Self::Cubic),
+        }
+    }
 }
 
 impl From<Line> for Segment {
@@ -86,12 +95,24 @@ pub struct EdgeBoundingBox {
     pub bottom: f32,
 }
 
+impl EdgeBoundingBox {
+    pub fn overlaps(&self, other: &Self) -> bool {
+        self.left < other.right
+            && self.right > other.left
+            && self.bottom < other.top
+            && self.top > other.bottom
+    }
+}
+
 pub trait Edge {
     fn point(&self, t: f32) -> (f32, f32);
     fn nearest_t(&self, point: (f32, f32)) -> f32;
     fn direction(&self, t: f32) -> (f32, f32);
     fn bbox(&self) -> EdgeBoundingBox;
     fn intersect_ray<'a>(&self, slope: f32, y: f32, buffer: &'a mut [f32]) -> &'a [f32];
+    fn split(&self, at: f32) -> [Self; 2]
+    where
+        Self: Sized;
 }
 
 #[derive(Clone, Debug)]
@@ -165,6 +186,20 @@ impl Edge for Line {
             }
         }
         &buffer[0..=0]
+    }
+
+    fn split(&self, at: f32) -> [Self; 2] {
+        let midpoint = self.point(at);
+        [
+            Self {
+                start: self.start,
+                end: midpoint,
+            },
+            Self {
+                start: midpoint,
+                end: self.end,
+            },
+        ]
     }
 }
 
@@ -263,6 +298,21 @@ impl Edge for QuadCurve {
         buffer[0] = t0;
         buffer[1] = t1;
         &buffer[0..=1]
+    }
+
+    fn split(&self, at: f32) -> [Self; 2] {
+        let [x0, x1] = self.x_poly.split_within01(at);
+        let [y0, y1] = self.y_poly.split_within01(at);
+        [
+            Self {
+                x_poly: x0,
+                y_poly: y0,
+            },
+            Self {
+                x_poly: x1,
+                y_poly: y1,
+            },
+        ]
     }
 }
 
@@ -420,6 +470,21 @@ impl Edge for CubicCurve {
             }
         }
         &buffer[..count]
+    }
+
+    fn split(&self, at: f32) -> [Self; 2] {
+        let [x0, x1] = self.x_poly.split_within01(at);
+        let [y0, y1] = self.y_poly.split_within01(at);
+        [
+            Self {
+                x_poly: x0,
+                y_poly: y0,
+            },
+            Self {
+                x_poly: x1,
+                y_poly: y1,
+            },
+        ]
     }
 }
 
