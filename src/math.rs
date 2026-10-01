@@ -80,6 +80,9 @@ impl Polynomial<2> {
 impl Polynomial<3> {
     pub fn roots(&self) -> [f32; 2] {
         let [a, b, c] = self.coeffs;
+        if a == 0.0 {
+            return [-c / b, f32::NAN];
+        }
         let square = b.powi(2) - (4.0 * a * c);
         let sqrt = square.sqrt();
         let plus = (-b + sqrt) / (2.0 * a);

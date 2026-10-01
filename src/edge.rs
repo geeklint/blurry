@@ -115,6 +115,47 @@ pub trait Edge {
         Self: Sized;
 }
 
+fn slow_intersection<A, B>(
+    a: &A,
+    bbox_a: &EdgeBoundingBox,
+    b: &B,
+    bbox_b: &EdgeBoundingBox,
+    lim: usize,
+) -> Option<[f32; 2]>
+where
+    A: Edge,
+    B: Edge,
+{
+    if !bbox_a.overlaps(bbox_b) {
+        dbg!(bbox_a, bbox_b);
+        dbg!(lim);
+        return None;
+    }
+    if lim == 0 {
+        return Some([0.5, 0.5]);
+    }
+    let [a0, a1] = a.split(0.5);
+    let [b0, b1] = b.split(0.5);
+    let bbox_a0 = a0.bbox();
+    let bbox_a1 = a1.bbox();
+    let bbox_b0 = b0.bbox();
+    let bbox_b1 = b1.bbox();
+    if let Some([ta, tb]) = slow_intersection(&a0, &bbox_a0, &b0, &bbox_b0, lim - 1) {
+        return Some([ta * 0.5, tb * 0.5]);
+    }
+    if let Some([ta, tb]) = slow_intersection(&a0, &bbox_a0, &b1, &bbox_b1, lim - 1) {
+        return Some([ta * 0.5, tb * 0.5 + 0.5]);
+    }
+    if let Some([ta, tb]) = slow_intersection(&a1, &bbox_a1, &b0, &bbox_b0, lim - 1) {
+        return Some([ta * 0.5 + 0.5, tb * 0.5]);
+    }
+    if let Some([ta, tb]) = slow_intersection(&a1, &bbox_a1, &b1, &bbox_b1, lim - 1) {
+        return Some([ta * 0.5 + 0.5, tb * 0.5 + 0.5]);
+    }
+    dbg!(lim);
+    None
+}
+
 #[derive(Clone, Debug)]
 pub struct Line {
     start: (f32, f32),
@@ -494,6 +535,8 @@ fn in01(value: f32) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::assert_matches;
+
     use super::*;
 
     #[test]
@@ -537,5 +580,34 @@ mod tests {
             let (x, y) = cubic.point(t);
             assert!((x - y).abs() < 4e-7);
         }
+    }
+
+    #[test]
+    fn test_cubic_bbox() {
+        let curve = CubicCurve::new((-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0));
+        let bbox = curve.bbox();
+        assert_eq!(bbox.left, -1.0);
+        assert_eq!(bbox.right, 0.5);
+        assert_eq!(bbox.top, 1.0);
+        assert_eq!(bbox.bottom, -1.0);
+    }
+
+    #[test]
+    fn test_slow_intersect() {
+        let curve_a = CubicCurve::new((-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0));
+        let curve_b = CubicCurve::new((1.0, -1.0), (-1.0, -1.0), (-1.0, 1.0), (1.0, 1.0));
+        let curve_c = CubicCurve::new((10.0, -1.0), (9.0, -1.0), (9.0, 1.0), (10.0, 1.0));
+        let Some([ta, tb]) =
+            slow_intersection(&curve_a, &curve_a.bbox(), &curve_b, &curve_b.bbox(), 20)
+        else {
+            panic!("these curves should intersect")
+        };
+        let pa = curve_a.point(ta);
+        let pb = curve_b.point(tb);
+        dbg!(pa, pb);
+        assert!((pa.0 - pb.0).abs() < 0.0001);
+        assert!((pa.1 - pb.1).abs() < 0.0001);
+        let result_c = slow_intersection(&curve_a, &curve_a.bbox(), &curve_c, &curve_c.bbox(), 20);
+        assert_matches!(result_c, None);
     }
 }
